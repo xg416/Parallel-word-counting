@@ -1,0 +1,198 @@
+
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <time.h>
+#include "queue.h"
+#include <time.h>
+
+extern int errno;
+extern int DEBUG_MODE;
+
+#define FILE_NAME_BUF_SIZE 50
+
+
+int get_file_list(struct Queue *file_name_queue, char *dirpath)
+{
+    DIR *dir;
+    struct dirent *in_file;
+
+    char dirname[FILE_NAME_BUF_SIZE];
+    // Assuming Linux only. Null character needs to be added to avoid garbage
+    char directory_seperator[2] = "/\0";
+    strcpy(dirname, dirpath);
+    int file_count = 0;
+
+    if ((dir = opendir(dirname)) == NULL)
+    {
+        fprintf(stderr, "Error : Failed to open input directory - %s\n", strerror(errno));
+        return -1;
+    }
+    while ((in_file = readdir(dir)))
+    {
+        /* we don't want current and parent directories */
+        if (!strcmp(in_file->d_name, ".") || !strcmp(in_file->d_name, "..") ||
+            !strcmp(in_file->d_name, "./") || !strcmp(in_file->d_name, "../"))
+            continue;
+
+        /* Open directory entry file for common operation */
+        // mallocing 3 times the directory buffer size for file_name
+        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE * 3);
+        strcpy(file_name, dirname);
+        strcat(file_name, directory_seperator);
+        strcat(file_name, in_file->d_name);
+        printf("Queing file: %s\n", file_name);
+        #pragma omp critical
+        {
+            // To be executed only by one thread at a time as there is a single queue
+            enQueue(file_name_queue, file_name, strlen(file_name));
+            file_count++;
+        }
+    }
+
+        printf("Done Queing all files\n\n");
+    closedir(dir);
+    return file_count;
+}
+
+/**
+ * Format string with only lower case alphabetic letters
+ */
+
+
+void populateQueue(struct Queue *q, char *file_name)
+{
+    // file open operation
+    FILE *filePtr;
+    if ((filePtr = fopen(file_name, "r")) == NULL)
+    {
+        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // read line by line from the file and add to the queue
+    size_t len = 0;
+    char *line = NULL;
+    int line_count = 0;
+    while (getline(&line, &len, filePtr) != -1)
+    {
+        enQueue(q, line, len);
+        line_count++;
+    }
+    // printf("line count %d, %s\n", line_count, file_name);
+    fclose(filePtr);
+    free(line);
+}
+
+
+
+void populateQueueWL(struct Queue *q, char *file_name, omp_lock_t *queuelock)
+{
+    // file open operation
+    FILE *filePtr;
+    if ((filePtr = fopen(file_name, "r")) == NULL)
+    {
+        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // read line by line from the file and add to the queue
+    size_t len = 0;
+    char *line = NULL;
+    int line_count = 0;
+    while (getline(&line, &len, filePtr) != -1)
+    {
+        // separated out the node creation to save some time lost due to locking
+        struct QNode *temp = newNode(line, len);
+
+        // enQueue section should be locked --------------------------------------------------------------------- lock this
+        omp_set_lock(queuelock);
+        enQueueData(q, temp);
+        omp_unset_lock(queuelock);
+
+        line_count++;
+    }
+    // printf("line count %d, %s\n", line_count, file_name);
+    fclose(filePtr);
+    free(line);
+}
+
+void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
+{
+    // file open operation
+    FILE *filePtr;
+    if ((filePtr = fopen(file_name, "r")) == NULL)
+    {
+        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // read line by line from the file and add to the queue
+    size_t len = 0;
+    char *line = NULL;
+    int line_count = 0;
+    int file_done = 0;
+    int lines_per_iter = 30;
+    int actual_lines;
+    struct QNode **temp_nodes;
+    temp_nodes = (struct QNode **) malloc(sizeof(struct QNode *) * lines_per_iter);
+    while (file_done != 1)
+    {
+        actual_lines = 0;
+        for (int i=0; i<lines_per_iter; i++){
+            if (getline(&line, &len, filePtr) == -1) {
+                file_done = 1;
+                break;
+            } else {
+                // separated out the node creation to save some time lost due to locking
+                temp_nodes[i] = newNode(line, len);
+                actual_lines++;
+                line_count++;
+            }
+        }
+        omp_set_lock(queuelock);
+        for (int i=0; i<actual_lines; i++){
+            if (temp_nodes[i] != NULL)
+                enQueueData(q, temp_nodes[i]);
+        }
+        omp_unset_lock(queuelock);
+
+    }
+    // printf("line count %d, %s\n", line_count, file_name);
+    fclose(filePtr);
+    free(line);
+}
+
+
+
+int process_args(int argc, char **argv, char *files_dir,  
+                 int *HASH_SIZE, int *NUM_THREADS)
+{
+    // https://stackoverflow.com/questions/17877368/getopt-passing-string-parameter-for-argument
+    int opt;
+    while ((opt = getopt(argc, argv, "d:h:q:t:gp")) != -1)
+    {
+        switch (opt)
+        {
+        case 'd':
+            printf("Files Directory given: \"%s\"\n", optarg);
+            strcpy(files_dir, optarg);
+            break;
+        case 'h':
+            printf("Hash Size to use: %s\n", optarg);
+            *HASH_SIZE = (int)atol(optarg);
+            break;
+        case 't':
+            printf("Threads to use: %s\n", optarg);
+            *NUM_THREADS = (int)atol(optarg);
+            break;
+        case ':':
+            fprintf(stderr, "Option -%c requires an argument to be given\n", optopt);
+            return -1;
+        }
+    }
+    return 0;
+}
