@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <omp.h>
 #include "queue.h"
-#include "hashTable.h"
+#include "ht.h"
 #include "util.h"
 
 extern int errno;
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     int NUM_REDUCERS = 16;
     int HASH_SIZE = 50000;
     //int QUEUE_TABLE_COUNT = 1;
-    char files_dir[FILE_NAME_BUF_SIZE] = "./files/";
+    char files_dir[FILE_NAME_BUF_SIZE] = "../files/";
     int file_count = 0;
     double global_time = -omp_get_wtime();
     double local_time;
