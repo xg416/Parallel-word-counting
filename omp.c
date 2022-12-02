@@ -13,6 +13,7 @@
 int main(int argc, char *argv[]){
     int nthreads;
     char *files_dir;
+    int local_time, file_count;
     nthreads = atoi(argv[1]); // first argument, number of thread
     files_dir = argv[2];      // second argument, the folder of all input files
     printf("input %s\n", files_dir);
