@@ -61,6 +61,22 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
 /**
  * Format string with only lower case alphabetic letters
  */
+char* format_string(char* original)
+{
+    int len = strlen(original);
+    char* word = (char*)malloc(len * sizeof(char));
+    int c = 0;
+    for (int i = 0; i < len; i++)
+    {
+        if (isalnum(original[i]) || original[i] == '\'')
+        {
+            word[c] = tolower(original[i]);
+            c++;
+        }
+    }
+    word[c] = '\0';
+    return word;
+}
 
 
 void populateQueue(struct Queue *q, char *file_name)
@@ -166,6 +182,54 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     free(line);
 }
 
+void populateHashMapWL(struct Queue* q, struct hashtable* hashMap, omp_lock_t* queuelock)
+{
+    struct node* node = NULL;
+    struct QNode* temp = NULL;
+    // wait until queue is good to start. Useful for parallel accesses.
+    while (q == NULL)
+        continue;
+    while (q->front)
+    {
+        // this block should be locked ------------------------------------------------------------------------------//
+        omp_set_lock(queuelock);
+        if (q->front == NULL) {
+            omp_unset_lock(queuelock);
+            continue;
+        }
+
+        temp = q->front;
+        q->front = q->front->next;
+        // If front becomes NULL, then change rear also as NULL
+        if (q->front == NULL)
+            q->rear = NULL;
+
+        omp_unset_lock(queuelock);
+        char str[temp->len];
+        strcpy(str, temp->line);
+
+        // separated out freeing part to save some time lost due to locking
+        if (temp != NULL) {
+            free(temp->line);
+            free(temp);
+        }
+
+
+        char* token;
+        char* rest = str;
+        // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
+        while ((token = strtok_r(rest, " ", &rest)))
+        {
+            char* word = format_string(token);
+            if (strlen(word) > 0)
+            {
+                node = add(hashMap, word, 0);
+                node->frequency++;
+            }
+            free(word);
+        }
+    }
+}
 
 
 int process_args(int argc, char **argv, char *files_dir,  

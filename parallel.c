@@ -6,10 +6,15 @@
 #include "queue.h"
 #include "hashTable.h"
 #include "util.h"
+#include "ht.h"
 
+
+#define HASH_CAPACITY 65536
 extern int errno;
 //int DEBUG_MODE = 0;
 //int PRINT_MODE = 0;
+
+
 
 int main(int argc, char** argv)
 {
@@ -92,15 +97,64 @@ int main(int argc, char** argv)
     strcat(csv_out, tmp_out);
     printf("Done Populating lines! Time taken: %f\n", local_time);
     
-    while (queue->front != NULL)//verification of the work queue
-    {
-        printf("%s", queue->front->line);
-        queue->front = queue->front->next;
-    }
+    //while (queue->front != NULL)//verification of the work queue
+    //{
+    //    printf("%s", queue->front->line);
+    //    queue->front = queue->front->next;
+    //}
 
     //hash words
+    ht** tables;
+    tables = (ht**)malloc(sizeof(ht*) * NUM_THREADS);
+    #pragma omp parallel for shared(queue, tables)
+    for (int i = 0; i < NUM_THREADS; i++) {
+        tables[i] = ht_create(HASH_CAPACITY);
+        populateHashMapWL(queue, tables[i], &linesQlock);
+    }
 
-    
+    //reduce
+    ht* sum_table;
+    sum_table = ht_create(HASH_CAPACITY);
+    #pragma omp parallel shared(sum_table, tables)
+    {
+        int id_thread = omp_get_thread_num();
+        int num_threads = omp_get_num_threads();
+        int interval = HASH_CAPACITY / num_threads;
+        int start = id_thread * interval;
+        int end = start + interval;
+        int i;
+
+        if (end > HASH_CAPACITY) end = HASH_CAPACITY;
+        for (int i = 0; i < num_threads; i++)
+        {
+            ht_merge(sum_table, tables[i], start, end);
+        }
+    }
+     
+   
+    ///********************** write file **********************************/
+    //#pragma omp parallel shared(sum_table)
+    //{
+    //    int i, j;
+    //    item* current;
+    //    int id_thread = omp_get_thread_num();
+    //    int num_threads = omp_get_num_threads();
+    //    int interval = HASH_CAPACITY / num_threads;
+    //    int start = id_thread * interval;
+    //    int end = start + interval;
+    //    if (end > sum_table->capacity) end = sum_table->capacity;
+
+    //    char* filename = (char*)malloc(sizeof(char) * 32);
+    //    sprintf(filename, "../output/openmp/%d.txt", id_thread);
+    //    FILE* fp = (FILE*)filename;
+    //    for (i = start; i < end; i++)
+    //    {
+    //        current = sum_table->entries[i];
+    //        if (current == NULL)
+    //            continue;
+    //        fprintf(filename, "key: %s, frequency: %d\n", current->key, current->count);
+    //    }
+    //}
   
 
 
