@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <omp.h>
 #include "queue.h"
-#include "ht.h"
+#include "hashTable.h"
 #include "util.h"
 
 extern int errno;
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     int NUM_REDUCERS = 16;
     int HASH_SIZE = 50000;
     //int QUEUE_TABLE_COUNT = 1;
-    char files_dir[FILE_NAME_BUF_SIZE] = "../files/";
+    char files_dir[FILE_NAME_BUF_SIZE] = "./files/";
     int file_count = 0;
     double global_time = -omp_get_wtime();
     double local_time;
@@ -40,13 +40,12 @@ int main(int argc, char** argv)
     omp_lock_t filesQlock;
     omp_init_lock(&filesQlock);
 
-    /********************** Creating and populating FilesQueue ************************************************/
+    //create filesQueue
     struct Queue* file_name_queue;
     file_name_queue = createQueue();
 
     printf("\nQueuing files in Directory: %s\n", files_dir);
     
-    //read files
     local_time = -omp_get_wtime();
     int files = get_file_list(file_name_queue, files_dir);
     if (files == -1)
@@ -59,10 +58,10 @@ int main(int argc, char** argv)
     sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_SIZE, NUM_THREADS, local_time);
     strcat(csv_out, tmp_out);
     printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
-    /**********************************************************************************************************/
+    
 
 
-    /********************** Queuing Lines by reading files in the FilesQueue **********************************/
+    //Queueing content of the files
     printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
     struct Queue* queue;
@@ -92,10 +91,18 @@ int main(int argc, char** argv)
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
     printf("Done Populating lines! Time taken: %f\n", local_time);
+    
+    while (queue->front != NULL)//verification of the work queue
+    {
+        printf("%s", queue->front->line);
+        queue->front = queue->front->next;
+    }
 
-    printf("%s",queue->);
+    //hash words
+
+    
   
 
 
 }
-    /****************** ****************************************************************************************/
+    
