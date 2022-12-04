@@ -70,14 +70,16 @@ ht *ht_create(int size)
     return table;
 }
 
-void ht_destroy(ht* table){
+void ht_destroy(struct ht* table){
     // First free allocated keys.
     int i;
-    item *entry;
+    struct item *entry;
     for (i = 0; i < table->capacity; i++) {
         entry = table->entries[i];
-        free(entry->key);
-        free(entry);
+        if (entry != NULL){
+            free(entry->key);
+            free(entry);
+        }
     }
 
     // Then free entries array and table itself.

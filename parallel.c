@@ -14,13 +14,12 @@ extern int errno;
 //int PRINT_MODE = 0;
 
 
-
 int main(int argc, char** argv)
 {
-    int NUM_THREADS = 8;
-    int NUM_READERS = 4;
-    int NUM_MAPPERS = 4;
-    int NUM_REDUCERS = 4;
+    int NUM_THREADS = 16;
+    int NUM_READERS = 8;
+    int NUM_MAPPERS = 8;
+    int NUM_REDUCERS = 8;
     int HASH_SIZE = 50000;
     //int QUEUE_TABLE_COUNT = 1;
     char files_dir[FILE_NAME_BUF_SIZE] = "../files/";
@@ -72,7 +71,7 @@ int main(int argc, char** argv)
     omp_lock_t linesQlock;
     omp_init_lock(&linesQlock);
     queue = createQueue();
-    #pragma omp parallel  num_threads(NUM_THREADS)
+    #pragma omp parallel num_threads(NUM_THREADS)
     {
         int i = omp_get_thread_num();
         char file_name[FILE_NAME_BUF_SIZE * 3];
@@ -148,7 +147,6 @@ int main(int argc, char** argv)
        char* filename = (char*)malloc(sizeof(char) * 32);
        sprintf(filename, "../output/openmp/%d.txt", id_thread);
        FILE* fp = fopen(filename, "w");
-    //    fp = fopen(filename, "w");
        for (i = start; i < end; i++)
        {
            current = sum_table->entries[i];
@@ -158,9 +156,15 @@ int main(int argc, char** argv)
            fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
        }
        fclose(fp);
+       printf("thread: %d/%d, output file: %s, start: %d, end: %d\n", id_thread, num_threads, filename, start, end); 
     }
-  
-
-
+    
+    #pragma omp parallel for
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        ht_destroy(tables[i]);
+    }
+    ht_destroy(sum_table);
+    destoryQueue(queue);
 }
     
