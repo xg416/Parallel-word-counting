@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <time.h>
 #include "queue.h"
-#include <time.h>
+#include "ht.h"
 
 extern int errno;
 extern int DEBUG_MODE;
@@ -182,9 +182,9 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     free(line);
 }
 
-void populateHashMapWL(struct Queue* q, struct hashtable* hashMap, omp_lock_t* queuelock)
+void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queuelock)
 {
-    struct node* node = NULL;
+    struct item* node = NULL;
     struct QNode* temp = NULL;
     // wait until queue is good to start. Useful for parallel accesses.
     while (q == NULL)
@@ -223,8 +223,8 @@ void populateHashMapWL(struct Queue* q, struct hashtable* hashMap, omp_lock_t* q
             char* word = format_string(token);
             if (strlen(word) > 0)
             {
-                node = add(hashMap, word, 0);
-                node->frequency++;
+                node = ht_update(hashMap, word, 0);
+                // node->count++;
             }
             free(word);
         }

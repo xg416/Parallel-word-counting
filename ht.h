@@ -33,7 +33,7 @@ typedef struct ht ht;
 ht* ht_create(int size);
 
 // update the hashtable with the input key and count
-item *ht_update(ht* table, char *key, int count);
+item *ht_update(struct ht* table, char *key, int count);
 
 // Free memory allocated for hash table, including allocated keys.
 void ht_destroy(ht* table);
@@ -57,11 +57,11 @@ void printTable(ht *table);
 ht *ht_create(int size)
 {
     int i;
-    ht *table = (ht *)malloc(sizeof(ht));
+    ht *table = (ht *)malloc(sizeof(struct ht));
     table->itemcount = 0;
     table->capacity = size;
 
-    table->entries = (item **)malloc(sizeof(item *) * size);
+    table->entries = (item **)malloc(sizeof(struct item *) * size);
     if (table->entries == NULL) {
         free(table); // error, free table before we return!
         return NULL;
@@ -97,9 +97,9 @@ uint64_t hashcode(const char* key) {
     return hash;
 }
 
-item *ht_update(ht* table, char *key, int count)
+item *ht_update(struct ht* table, char *key, int count)
 {
-    item *my_item;
+    struct item *my_item;
     int index = hashcode(key) % table->capacity;
     my_item = table->entries[index];
 
@@ -113,8 +113,11 @@ item *ht_update(ht* table, char *key, int count)
         my_item = table->entries[index];
     }
     /* Create new node if no duplicate is found */
-    // my_item = (item *)malloc(sizeof(item));
-    strcpy(my_item->key, key);
+    // my_item == NULL now
+    my_item = (struct item *)malloc(sizeof(struct item));
+    // strcpy(my_item->key, key); can use this if we explicitly allocate memory: my_item->key = malloc(strlen(key)+1);
+    // strdup function dynamically allocate memory on the heap. Need to free manually
+    my_item->key = strdup(key);
     my_item->count = count;
     table->entries[index] = my_item;
     table->itemcount = table->itemcount + 1;
