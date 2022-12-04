@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <omp.h>
+
 #include "queue.h"
 #include "util.h"
 #include "ht.h"
@@ -20,7 +21,6 @@ int main(int argc, char** argv)
     int NUM_READERS = 8;
     int NUM_MAPPERS = 8;
     int NUM_REDUCERS = 8;
-    int HASH_SIZE = 50000;
     //int QUEUE_TABLE_COUNT = 1;
     char files_dir[FILE_NAME_BUF_SIZE] = "../files/";
     int file_count = 0;
@@ -29,16 +29,6 @@ int main(int argc, char** argv)
     char csv_out[400] = "";
     char tmp_out[200] = "";  // Buffer was small. sprintf caused a buffer overflow and modified the inputs. 
     
-
-    // Parsing User inputs from run command with getopt
-    int arg_parse = process_args(argc, argv, files_dir, &HASH_SIZE,
-         &NUM_THREADS);
-    if (arg_parse == -1)
-    {
-        printf("Check inputs and rerun! Exiting!\n");
-        return 1;
-    }
-
     omp_set_num_threads(NUM_THREADS);
     omp_lock_t filesQlock;
     omp_init_lock(&filesQlock);
@@ -58,7 +48,7 @@ int main(int argc, char** argv)
     file_count += files;
     local_time += omp_get_wtime();
 
-    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_SIZE, NUM_THREADS, local_time);
+    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, NUM_THREADS, local_time);
     strcat(csv_out, tmp_out);
     printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
     
