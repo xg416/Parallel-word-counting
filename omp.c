@@ -1,38 +1,46 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <omp.h>
-#include <time.h>
 
 #include "queue.h"
-#include "ht.h"
 #include "util.h"
+#include "ht.h"
+
 
 #define HASH_CAPACITY 65536
 
 int main(int argc, char *argv[]){
-    int nthreads;
+    int nThreads;
     char *files_dir;
-    int local_time, file_count;
-    nthreads = atoi(argv[1]); // first argument, number of thread
+    nThreads = atoi(argv[1]); // first argument, number of thread
     files_dir = argv[2];      // second argument, the folder of all input files
     printf("input %s\n", files_dir);
+    int nReaders = nThreads/2;
+    int nMappers = nThreads/2;
+    int nReducers = nThreads/2;
+    int file_count = 0;
+    double global_time = -omp_get_wtime();
+    double local_time;
+    char csv_out[400] = "";
+    char tmp_out[200] = "";  // Buffer was small. sprintf caused a buffer overflow and modified the inputs. 
+    
     ht **tables;
     ht *sum_table;
-    tables = (ht **)malloc(sizeof(ht *) * nthreads/2);
+    tables = (ht**)malloc(sizeof(struct ht*) * nMappers);
     sum_table = ht_create(HASH_CAPACITY);
     
-    omp_set_num_threads(nthreads);
+    omp_set_num_threads(nThreads);
     omp_lock_t filesQlock;
     omp_init_lock(&filesQlock);
 
-    /********************** Creating and populating FilesQueue ************************************************/
+    //create filesQueue
     struct Queue* file_name_queue;
     file_name_queue = createQueue();
 
     printf("\nQueuing files in Directory: %s\n", files_dir);
     
-    //read files
     local_time = -omp_get_wtime();
     int files = get_file_list(file_name_queue, files_dir);
     if (files == -1)
@@ -42,19 +50,18 @@ int main(int argc, char *argv[]){
     file_count += files;
     local_time += omp_get_wtime();
 
-    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_SIZE, NUM_THREADS, local_time);
+    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, nThreads, local_time);
     strcat(csv_out, tmp_out);
     printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
-    /**********************************************************************************************************/
 
-    /********************** Queuing Lines by reading files in the FilesQueue **********************************/
+    //Queueing content of the files
     printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
     struct Queue* queue;
     omp_lock_t linesQlock;
     omp_init_lock(&linesQlock);
     queue = createQueue();
-    #pragma omp parallel  num_threads(NUM_THREADS)
+    #pragma omp parallel num_threads(nThreads)
     {
         int i = omp_get_thread_num();
         char file_name[FILE_NAME_BUF_SIZE * 3];
@@ -77,11 +84,22 @@ int main(int argc, char *argv[]){
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
     printf("Done Populating lines! Time taken: %f\n", local_time);
-
-    printf("%s",queue->);
     
+    //while (queue->front != NULL)//verification of the work queue
+    //{
+    //    printf("%s", queue->front->line);
+    //    queue->front = queue->front->next;
+    //}
+
+    /************************* Mapper **********************************/
+    #pragma omp parallel for shared(queue, tables) num_threads(nMappers)
+    for (int i = 0; i < nMappers; i++) {
+        tables[i] = ht_create(HASH_CAPACITY);
+        populateHashMapWL(queue, tables[i], &linesQlock);
+    }
+
     /********************** reduction **********************************/
-    #pragma omp parallel shared(sum_table, tables)
+    #pragma omp parallel shared(sum_table, tables) num_threads(nReducers)
     {
         int id_thread = omp_get_thread_num();
         int num_threads = omp_get_num_threads();
@@ -89,38 +107,54 @@ int main(int argc, char *argv[]){
         int start = id_thread * interval;
         int end = start + interval;
         int i;
+        // if (id_thread == 0){printTable(tables[0]);}
 
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
-        for (int i = 0; i < num_threads; i++)
+        for (i = 0; i < num_threads; i++)
         {
             ht_merge(sum_table, tables[i], start, end);
         }
+        // if (id_thread == 0){printTable(sum_table);}
     }
-
+     
+   
     /********************** write file **********************************/
     #pragma omp parallel shared(sum_table)
     {
-        int i, j;
-        item *current;
-        int id_thread = omp_get_thread_num();
-        int num_threads = omp_get_num_threads();
-        int interval = HASH_CAPACITY / num_threads;
-        int start = id_thread * interval;
-        int end = start + interval;
-        if (end > sum_table->capacity) end = sum_table->capacity;
+       int i;
+       item* current;
+       int id_thread = omp_get_thread_num();
+       int num_threads = omp_get_num_threads();
+       int interval = HASH_CAPACITY / num_threads;
+       int start = id_thread * interval;
+       int end = start + interval;
+       if (end > sum_table->capacity) end = sum_table->capacity;
 
-        char *filename = (char *)malloc(sizeof(char) * 32);
-        sprintf(filename, "../output/openmp/%d.txt", id_thread);
-        FILE *fp = (FILE *)filename;
-        for (i = start; i < end; i++)
-        {
-            current = sum_table->entries[i];
-            if (current == NULL)
-                continue;
-            fprintf(filename, "key: %s, frequency: %d\n", current->key, current->count);
-        }
+       char* filename = (char*)malloc(sizeof(char) * 32);
+       sprintf(filename, "../output/openmp/%d.txt", id_thread);
+       FILE* fp = fopen(filename, "w");
+       for (i = start; i < end; i++)
+       {
+           current = sum_table->entries[i];
+           if (current == NULL)
+               continue;
+        //    printf("i: %d, key: %s, count: %d\n", i, current->key, current->count); 
+           fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
+       }
+       fclose(fp);
+       printf("thread: %d/%d, output file: %s, start: %d, end: %d\n", id_thread, num_threads, filename, start, end); 
     }
-    // write
     
+    #pragma omp parallel for
+    for (int i = 0; i < nMappers; i++)
+    {
+        ht_destroy(tables[i]);
+    }
+    ht_destroy(sum_table);
+    freeQueue(queue);
     
+    global_time += omp_get_wtime();
+    printf("total time taken for the execution: %f\n", global_time);
+    
+    return EXIT_SUCCESS;
 }

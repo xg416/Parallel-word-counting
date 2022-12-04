@@ -87,7 +87,7 @@ void deQueue(struct Queue *q)
 	free(temp);
 }
 
-void destoryQueue(struct Queue *q)
+void freeQueue(struct Queue *q)
 {
 	struct QNode *temp = deQueueData(q);
 	if (temp == NULL) {
