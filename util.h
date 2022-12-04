@@ -223,7 +223,7 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             char* word = format_string(token);
             if (strlen(word) > 0)
             {
-                node = ht_update(hashMap, word, 0);
+                node = ht_update(hashMap, word, 1);
                 // node->count++;
             }
             free(word);

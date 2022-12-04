@@ -122,12 +122,14 @@ int main(int argc, char** argv)
         int start = id_thread * interval;
         int end = start + interval;
         int i;
+        // if (id_thread == 0){printTable(tables[0]);}
 
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
         for (int i = 0; i < num_threads; i++)
         {
             ht_merge(sum_table, tables[i], start, end);
         }
+        // if (id_thread == 0){printTable(sum_table);}
     }
      
    
@@ -145,14 +147,17 @@ int main(int argc, char** argv)
 
        char* filename = (char*)malloc(sizeof(char) * 32);
        sprintf(filename, "../output/openmp/%d.txt", id_thread);
-       FILE* fp = (FILE*)filename;
+       FILE* fp = fopen(filename, "w");
+    //    fp = fopen(filename, "w");
        for (i = start; i < end; i++)
        {
            current = sum_table->entries[i];
            if (current == NULL)
                continue;
+        //    printf("i: %d, key: %s, count: %d\n", i, current->key, current->count); 
            fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
        }
+       fclose(fp);
     }
   
 

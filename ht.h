@@ -102,19 +102,19 @@ item *ht_update(struct ht* table, char *key, int count)
     struct item *my_item;
     int index = hashcode(key) % table->capacity;
     my_item = table->entries[index];
-
     /* Search for duplicate value */
     while (my_item != NULL)
     {
         index++;
         if (strcmp(key, my_item->key) == 0)
             my_item->count += count;
+            // printf("key %s, index: %d, count: %d\n", key, index, my_item->count);
             return my_item;
         my_item = table->entries[index];
     }
     /* Create new node if no duplicate is found */
     // my_item == NULL now
-    my_item = (struct item *)malloc(sizeof(struct item));
+    my_item = (item *)malloc(sizeof(struct item));
     // strcpy(my_item->key, key); can use this if we explicitly allocate memory: my_item->key = malloc(strlen(key)+1);
     // strdup function dynamically allocate memory on the heap. Need to free manually
     my_item->key = strdup(key);
@@ -151,7 +151,7 @@ void printTable(ht *table)
         if (current == NULL)
             continue;
         else{
-            printf("i: %d, key: %s, frequency: %d\n", i, current->key, current->count);
+            printf("i: %d, key: %s, count: %d\n", i, current->key, current->count);
         }
     }
 }
