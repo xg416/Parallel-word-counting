@@ -40,9 +40,9 @@ int main(int argc, char *argv[]){
     printf("\nQueuing files in Directory: %s\n", files_dir);
     
     local_time = -omp_get_wtime();
-    int files = get_file_list(file_name_queue, files_dir);
-    if (files == -1) printf("Error!! Check input directory and rerun! Exiting!\n");
-    file_count += files;
+    int nfiles = get_file_list(file_name_queue, files_dir);
+    if (nfiles == -1) printf("Error!! Check input directory and rerun! Exiting!\n");
+    file_count += nfiles;
     local_time += omp_get_wtime();
     sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, nThreads, local_time);
     strcat(csv_out, tmp_out);
