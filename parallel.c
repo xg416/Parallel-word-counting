@@ -153,10 +153,10 @@ int main(int argc, char *argv[]){
     #pragma omp parallel for
     for (int i = 0; i < nMappers; i++)
     {
-        ht_destroy(tables[i]);
+        freeHT(tables[i]);
         freeQueue(queueList[i]);
     }
-    ht_destroy(sum_table);
+    freeHT(sum_table);
     free(queueList);
     
     global_time += omp_get_wtime();

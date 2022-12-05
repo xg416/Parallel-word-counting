@@ -70,7 +70,7 @@ ht *ht_create(int size)
     return table;
 }
 
-void ht_destroy(struct ht* table){
+void freeHT(struct ht* table){
     // First free allocated keys.
     int i;
     struct item *entry;

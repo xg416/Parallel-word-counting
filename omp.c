@@ -19,6 +19,7 @@ int main(int argc, char *argv[]){
     printf("input %s\n", files_dir);
     int nRM = nThreads/2;     // # of readers and mappers
     int file_count = 0;
+    int k;                    // temp variable for loop
     double global_time = -omp_get_wtime();
     double local_time;
     char csv_out[400] = "";
@@ -54,10 +55,10 @@ int main(int argc, char *argv[]){
     struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
     
     omp_lock_t linesQlocks[nRM];
-    for (int i = 0; i < nRM; i++)
+    for (k = 0; k < nRM; k++)
     {
-        omp_init_lock(&linesQlocks[i]);
-        queueList[i] = createQueue();
+        omp_init_lock(&linesQlocks[k]);
+        queueList[k] = createQueue();
     }
     
     /********************** reader and mapper **********************************/
@@ -86,7 +87,7 @@ int main(int argc, char *argv[]){
         }
     }
     omp_destroy_lock(&filesQlock);
-    for (int k=0; k<nRM; k++) {
+    for (k=0; k<nRM; k++) {
         omp_destroy_lock(&linesQlocks[k]);
     }
     local_time += omp_get_wtime();
@@ -150,12 +151,12 @@ int main(int argc, char *argv[]){
     }
     
     #pragma omp parallel for
-    for (int i = 0; i < nRM; i++)
+    for (int k = 0; k < nRM; k++)
     {
-        ht_destroy(tables[i]);
-        freeQueue(queueList[i]);
+        freeHT(tables[k]);
+        freeQueue(queueList[k]);
     }
-    ht_destroy(sum_table);
+    freeHT(sum_table);
     free(queueList);
     
     global_time += omp_get_wtime();
