@@ -57,13 +57,14 @@ int main(int argc, char *argv[]){
     //Queueing content of the files
     printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
-    struct Queue* queue;
+    struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nReaders);
+    
     omp_lock_t linesQlock;
     omp_init_lock(&linesQlock);
-    queue = createQueue();
-    #pragma omp parallel num_threads(nThreads)
+    #pragma omp parallel num_threads(nReaders)
     {
         int i = omp_get_thread_num();
+        queueList[i] = createQueue();
         char file_name[FILE_NAME_BUF_SIZE * 3];
         while (file_name_queue->front != NULL) {
             omp_set_lock(&filesQlock);
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]){
             strcpy(file_name, file_name_queue->front->line);
             deQueue(file_name_queue);
             omp_unset_lock(&filesQlock);
-            populateQueueWL_ML(queue, file_name, &linesQlock);
+            populateQueueWL_ML(queueList[i], file_name, &linesQlock);
         }
     }
     omp_destroy_lock(&filesQlock);
@@ -92,10 +93,10 @@ int main(int argc, char *argv[]){
     //}
 
     /************************* Mapper **********************************/
-    #pragma omp parallel for shared(queue, tables) num_threads(nMappers)
+    #pragma omp parallel for shared(queueList, tables) num_threads(nMappers)
     for (int i = 0; i < nMappers; i++) {
         tables[i] = ht_create(HASH_CAPACITY);
-        populateHashMapWL(queue, tables[i], &linesQlock);
+        populateHashMapWL(queueList[i], tables[i], &linesQlock);
     }
 
     /********************** reduction **********************************/
@@ -149,9 +150,10 @@ int main(int argc, char *argv[]){
     for (int i = 0; i < nMappers; i++)
     {
         ht_destroy(tables[i]);
+        freeQueue(queueList[i]);
     }
     ht_destroy(sum_table);
-    freeQueue(queue);
+    free(queueList);
     
     global_time += omp_get_wtime();
     printf("total time taken for the execution: %f\n", global_time);

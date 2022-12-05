@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <time.h>
+
 #include "queue.h"
 #include "ht.h"
 
@@ -77,7 +78,6 @@ char* format_string(char* original)
     word[c] = '\0';
     return word;
 }
-
 
 void populateQueue(struct Queue *q, char *file_name)
 {
@@ -153,6 +153,7 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     int file_done = 0;
     int lines_per_iter = 30;
     int actual_lines;
+    char *word = NULL;
     struct QNode **temp_nodes;
     temp_nodes = (struct QNode **) malloc(sizeof(struct QNode *) * lines_per_iter);
     while (file_done != 1)
@@ -224,7 +225,6 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             if (strlen(word) > 0)
             {
                 node = ht_update(hashMap, word, 1);
-                // node->count++;
             }
             free(word);
         }

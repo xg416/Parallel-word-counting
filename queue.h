@@ -48,7 +48,7 @@ void enQueueData(struct Queue *q, struct QNode *temp)
 
 	// Add the new node at the end of queue and change rear
 	q->rear->next = temp;
-	q->rear = temp;
+	q->rear = q->rear->next;
 }
 
 struct QNode *deQueueData(struct Queue *q)
