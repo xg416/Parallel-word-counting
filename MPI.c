@@ -56,13 +56,6 @@ int main(int argc, char **argv)
     char csv_out[400] = "";
     char tmp_out[200] = "";
 
-    FILE *outfile;
-    // open a file whose name is based on the pid for writing data to that file
-    char buf[16];
-    // TODO: Create output directories automatically and not hard coded
-    snprintf(buf, 16, "../output/mpi/%d.txt", pid);
-    outfile = fopen(buf, "w");
-
     MPI_Request request;
     MPI_Status status;
     int recv_pid;
@@ -345,9 +338,20 @@ int main(int argc, char **argv)
      *****************************************************************************************/
 
     // local_time = -omp_get_wtime();
-    // writeTable(final_table, outfile, h_start, h_end);
-    // writeTable(final_table, outfile, 0, final_table->tablesize);
-    // local_time += omp_get_wtime();
+    char* filename = (char*)malloc(sizeof(char) * 32);
+    sprintf(filename, "../output/mpi/%d.txt", pid);
+    FILE* fp = fopen(filename, "w");
+    item* current;
+    for (int i = h_start; i < h_end; i++)
+    {
+        current = final_table->entries[i];
+        if (current == NULL)
+            continue;
+        //    printf("i: %d, key: %s, count: %d\n", i, current->key, current->count); 
+        fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
+    }
+    fclose(fp);
+    local_time += omp_get_wtime();
     global_time += local_time;
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
