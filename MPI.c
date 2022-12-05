@@ -9,9 +9,9 @@
 #include <unistd.h>
 #include <omp.h>
 
-#include "util/hashTable.h"
-#include "util/queue.h"
-#include "util/util.h"
+#include "ht.h"
+#include "queue.h"
+#include "util.h"
 
 #define TAG_COMM_REQ_DATA 0
 #define TAG_COMM_FILE_NAME 1
