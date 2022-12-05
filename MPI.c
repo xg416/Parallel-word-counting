@@ -23,9 +23,6 @@
 #define REPEAT_FILES 10
 #define BREAK_RM 0
 
-extern int errno;
-int DEBUG_MODE = 0;
-int PRINT_MODE = 1;
 
 typedef struct
 {
@@ -177,17 +174,17 @@ int main(int argc, char **argv)
     omp_lock_t queuelock[nthreads/2];
 
     struct Queue **queues;
-    struct hashtable **hash_tables;
+    struct ht **hash_tables;
 
     // we will divide the number of threads and use half for reading and half for mapping
     // therefore, only half the thread number of queues and hash_tables are required
     queues = (struct Queue **)malloc(sizeof(struct Queue *) * nthreads);
-    hash_tables = (struct hashtable **)malloc(sizeof(struct hashtable *) * nthreads);
+    hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nthreads);
 
     for (int k=0; k<nthreads; k++) {
         omp_init_lock(&queuelock[k]);
         queues[k] = createQueue();
-        hash_tables[k] = createtable(HASH_CAPACITY);
+        hash_tables[k] = ht_create(HASH_CAPACITY);
     }
 
     /*****************************************************************************************
@@ -213,12 +210,12 @@ int main(int argc, char **argv)
                 deQueue(file_name_queue);
                 omp_unset_lock(&readlock);
 
-                populateQueueWL(queues[threadn], file_name, &queuelock[threadn]);
+                populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
             }
-            queues[threadn]->finished = 1;
+            // queues[threadn]->finished = 1;
         } else {
             int thread = threadn - nthreads/2;
-            hash_tables[thread] = createtable(HASH_CAPACITY);
+            hash_tables[thread] = ht_create(HASH_CAPACITY);
             populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
         }  
     }
@@ -236,7 +233,7 @@ int main(int argc, char **argv)
      * Final sum reduction locally inside the process
      *****************************************************************************************/
     local_time = -omp_get_wtime();
-    struct hashtable *final_table = createtable(HASH_CAPACITY);
+    struct ht *final_table = ht_create(HASH_CAPACITY);
     #pragma omp parallel shared(final_table, hash_tables) num_threads(nthreads)
     {
         int threadn = omp_get_thread_num();
@@ -245,16 +242,10 @@ int main(int argc, char **argv)
         int start = threadn * interval;
         int end = start + interval;
 
-        if (end > final_table->tablesize)
-        {
-            end = final_table->tablesize;
-        }
+        if (end > final_table->itemcount) end = final_table->itemcount;
 
         int i;
-        for (i = start; i < end; i++)
-        {
-            reduce(hash_tables, final_table, nthreads, i);
-        }
+        ht_merge(final_table, hash_tables[i], start, end);
     }
     MPI_Barrier(MPI_COMM_WORLD);
     local_time += omp_get_wtime();
@@ -282,14 +273,13 @@ int main(int argc, char **argv)
     // sent to 1st process likewise all data should be shared among the processes
 
     // --------- DEFINE THE STRUCT DATA TYPE TO SEND
-    const int nfields = 3;
+    const int nfields = 2;
     MPI_Aint disps[nfields];
-    int blocklens[] = {1, 1, WORD_MAX_LENGTH};
-    MPI_Datatype types[] = {MPI_INT, MPI_INT, MPI_CHAR};
+    int blocklens[] = {WORD_MAX_LENGTH, 1};
+    MPI_Datatype types[] = {MPI_CHAR, MPI_INT};
 
-    disps[0] = offsetof(pair, hash);
+    disps[0] = offsetof(pair, word);
     disps[1] = offsetof(pair, count);
-    disps[2] = offsetof(pair, word);
 
     MPI_Datatype istruct;
     MPI_Type_create_struct(nfields, blocklens, disps, types, &istruct);
@@ -304,19 +294,16 @@ int main(int argc, char **argv)
         {
             int j = 0;
             pair pairs[HASH_CAPACITY];
-            struct node *current = NULL;
+            struct item *current = NULL;
             for (int i = h_space * k; i < h_space * (k + 1); i++)
             {
-                current = final_table->table[i];
+                current = final_table->entries[i];
                 if (current == NULL)
                     continue;
-                while (current != NULL)
-                {
-                    pairs[j].count = current->frequency;
-                    pairs[j].hash = i;
+                else{
+                    pairs[j].count = current->count;
                     strcpy(pairs[j].word, current->key);
                     j++;
-                    current = current->next;
                 }
             }
 
@@ -340,8 +327,7 @@ int main(int argc, char **argv)
                     pair recv_pair = recv_pairs[i];
                     int frequency = recv_pair.count;
 
-                    struct node *node = add(final_table, recv_pair.word, 0);
-                    node->frequency += recv_pair.count;
+                    struct item *node = ht_update(final_table, recv_pair.word, recv_pair.count);
                 }
             }
         }
@@ -358,10 +344,10 @@ int main(int argc, char **argv)
      * write function should be only called for the respective section of the
      *****************************************************************************************/
 
-    local_time = -omp_get_wtime();
-    writeTable(final_table, outfile, h_start, h_end);
+    // local_time = -omp_get_wtime();
+    // writeTable(final_table, outfile, h_start, h_end);
     // writeTable(final_table, outfile, 0, final_table->tablesize);
-    local_time += omp_get_wtime();
+    // local_time += omp_get_wtime();
     global_time += local_time;
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
