@@ -104,38 +104,6 @@ void populateQueue(struct Queue *q, char *file_name)
 }
 
 
-
-void populateQueueWL(struct Queue *q, char *file_name, omp_lock_t *queuelock)
-{
-    // file open operation
-    FILE *filePtr;
-    if ((filePtr = fopen(file_name, "r")) == NULL)
-    {
-        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    // read line by line from the file and add to the queue
-    size_t len = 0;
-    char *line = NULL;
-    int line_count = 0;
-    while (getline(&line, &len, filePtr) != -1)
-    {
-        // separated out the node creation to save some time lost due to locking
-        struct QNode *temp = newNode(line, len);
-
-        // enQueue section should be locked --------------------------------------------------------------------- lock this
-        omp_set_lock(queuelock);
-        enQueueData(q, temp);
-        omp_unset_lock(queuelock);
-
-        line_count++;
-    }
-    // printf("line count %d, %s\n", line_count, file_name);
-    fclose(filePtr);
-    free(line);
-}
-
 void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
 {
     // file open operation
@@ -182,6 +150,35 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     fclose(filePtr);
     free(line);
 }
+
+void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queuelock)
+{
+    // file open operation
+    FILE *filePtr;
+    if ((filePtr = fopen(file_name, "r")) == NULL)
+    {
+        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    // read line by line from the file and add to the queue
+    size_t len = 0;
+    char *line = NULL;
+    int line_count = 0;
+    struct QNode *temp_node;
+    while (getline(&line, &len, filePtr) != -1)
+    {
+        omp_set_lock(queuelock);
+        temp_node = newNode(line, len);
+        enQueueData(q, temp_node);
+        line_count++;
+        omp_unset_lock(queuelock);
+    }
+    // printf("line count %d, %s\n", line_count, file_name);
+    fclose(filePtr);
+    free(line);
+}
+
 
 void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queuelock)
 {

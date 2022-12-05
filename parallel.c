@@ -8,7 +8,11 @@
 #include "util.h"
 #include "ht.h"
 
-
+// This file runs readers and mappers serially
+//
+//
+//
+//
 #define HASH_CAPACITY 65536
 
 int main(int argc, char *argv[]){
