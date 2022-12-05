@@ -158,6 +158,7 @@ int main(int argc, char *argv[]){
     }
     freeHT(sum_table);
     free(queueList);
+    free(tables);
     
     global_time += omp_get_wtime();
     printf("total time taken for the execution: %f\n", global_time);
