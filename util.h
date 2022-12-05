@@ -45,7 +45,7 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
         strcpy(file_name, dirname);
         strcat(file_name, directory_seperator);
         strcat(file_name, in_file->d_name);
-        printf("Queing file: %s\n", file_name);
+        printf("Queuing file: %s\n", file_name);
         #pragma omp critical
         {
             // To be executed only by one thread at a time as there is a single queue
@@ -54,7 +54,7 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
         }
     }
 
-        printf("Done Queing all files\n\n");
+        printf("Done Queuing all files\n\n");
     closedir(dir);
     return file_count;
 }
@@ -226,34 +226,4 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             free(word);
         }
     }
-}
-
-
-int process_args(int argc, char **argv, char *files_dir,  
-                 int *HASH_SIZE, int *NUM_THREADS)
-{
-    // https://stackoverflow.com/questions/17877368/getopt-passing-string-parameter-for-argument
-    int opt;
-    while ((opt = getopt(argc, argv, "d:h:q:t:gp")) != -1)
-    {
-        switch (opt)
-        {
-        case 'd':
-            printf("Files Directory given: \"%s\"\n", optarg);
-            strcpy(files_dir, optarg);
-            break;
-        case 'h':
-            printf("Hash Size to use: %s\n", optarg);
-            *HASH_SIZE = (int)atol(optarg);
-            break;
-        case 't':
-            printf("Threads to use: %s\n", optarg);
-            *NUM_THREADS = (int)atol(optarg);
-            break;
-        case ':':
-            fprintf(stderr, "Option -%c requires an argument to be given\n", optopt);
-            return -1;
-        }
-    }
-    return 0;
 }

@@ -37,7 +37,6 @@ int main(int argc, char *argv[]){
     //create filesQueue
     struct Queue* file_name_queue;
     file_name_queue = createQueue();
-
     printf("\nQueuing files in Directory: %s\n", files_dir);
     
     local_time = -omp_get_wtime();
@@ -66,6 +65,7 @@ int main(int argc, char *argv[]){
     {
         int i = omp_get_thread_num();
         if (i < nRM){
+            //reader threads
             char file_name[FILE_NAME_BUF_SIZE * 3];
             while (file_name_queue->front != NULL) {
                 omp_set_lock(&filesQlock);
@@ -82,6 +82,7 @@ int main(int argc, char *argv[]){
             }     
         }
         else{
+            //mapper threads
             tables[i-nRM] = ht_create(HASH_CAPACITY);
             populateHashMapWL(queueList[i-nRM], tables[i-nRM], &linesQlocks[i-nRM]); 
         }
@@ -101,8 +102,8 @@ int main(int argc, char *argv[]){
     //    queue->front = queue->front->next;
     //}
 
-
     /********************** reduction **********************************/
+    local_time = -omp_get_wtime();
     #pragma omp parallel num_threads(nThreads)
     {
         int id_thread = omp_get_thread_num();
@@ -120,9 +121,9 @@ int main(int argc, char *argv[]){
         }
         // if (id_thread == 0){printTable(sum_table);}
     }
-    printf("Done Populating lines! Time taken: %f\n", local_time);
-     
-   
+    local_time += omp_get_wtime();
+    printf("time for reduction %f \n ", local_time);
+    
     /********************** write file **********************************/
     #pragma omp parallel shared(sum_table)
     {
@@ -147,7 +148,7 @@ int main(int argc, char *argv[]){
            fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
        }
        fclose(fp);
-       printf("thread: %d/%d, output file: %s, start: %d, end: %d\n", id_thread, num_threads, filename, start, end); 
+    //    printf("thread: %d/%d, output file: %s, start: %d, end: %d\n", id_thread, num_threads, filename, start, end); 
     }
     
     #pragma omp parallel for
