@@ -61,6 +61,7 @@ int main(int argc, char **argv)
     MPI_Status status;
     int recv_pid;
     int recv_len = 0;
+    int i, k;
 
     int count = 0;
     int done = 0;
@@ -83,7 +84,7 @@ int main(int argc, char **argv)
      *****************************************************************************************/
     if (pid == 0)
     {
-        for (int i = 0; i < repeat_files; i++)
+        for (i = 0; i < repeat_files; i++)
         {
             int files = get_file_list(file_name_queue, files_dir);
             if (files == -1)
@@ -98,11 +99,12 @@ int main(int argc, char **argv)
         int spare = file_count % size;
 
         // iterate for all process ids in the comm world
-        for (int i = 0; i < size; i++)
+        for (i = 0; i < size; i++)
         {
             char *concat_files =
                 (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE * num_files_to_send);
             int len = 0;
+            int j;
             int send_file_count = num_files_to_send;
             if (spare>0) {
                 send_file_count += 1;
@@ -110,7 +112,7 @@ int main(int argc, char **argv)
             }
 
             // concat file names to one big char array for ease of sending
-            for (int j = 0; j < send_file_count; j++)
+            for (j = 0; j < send_file_count; j++)
             {
                 if (j == 0)
                 {
@@ -175,7 +177,7 @@ int main(int argc, char **argv)
     queues = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
     hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nRM);
 
-    for (int k=0; k<nRM; k++) {
+    for (k=0; k<nRM; k++) {
         omp_init_lock(&queuelock[k]);
         queues[k] = createQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
@@ -214,7 +216,7 @@ int main(int argc, char **argv)
         }  
     }
     omp_destroy_lock(&readlock);
-    for (int k=0; k<nRM; k++) {
+    for (k=0; k<nRM; k++) {
         omp_destroy_lock(&queuelock[k]);
     }
     MPI_Barrier(MPI_COMM_WORLD);
@@ -238,10 +240,10 @@ int main(int argc, char **argv)
         
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
 
-        int i;
-        for (i = 0; i < nRM; i++)
+        int j;
+        for (j = 0; j < nRM; j++)
         {
-            ht_merge(sum_table, hash_tables[i], start, end);
+            ht_merge(sum_table, hash_tables[j], start, end);
         }
     }
     MPI_Barrier(MPI_COMM_WORLD);
@@ -284,8 +286,6 @@ int main(int argc, char **argv)
     MPI_Type_commit(&istruct);
 
     // ---
-
-    int k = 0;
     for (k = 0; k < size; k++)
     {
         if (pid != k)
@@ -293,7 +293,7 @@ int main(int argc, char **argv)
             int j = 0;
             pair pairs[HASH_CAPACITY];
             struct item *current = NULL;
-            for (int i = h_space * k; i < h_space * (k + 1); i++)
+            for (i = h_space * k; i < h_space * (k + 1); i++)
             {
                 current = sum_table->entries[i];
                 if (current == NULL)
@@ -311,7 +311,8 @@ int main(int argc, char **argv)
         }
         else if (pid == k)
         {
-            for (int pr = 0; pr < size - 1; pr++)
+            int pr;
+            for (pr = 0; pr < size - 1; pr++)
             {
                 int recv_j = 0;
                 pair recv_pairs[HASH_CAPACITY];
@@ -320,7 +321,7 @@ int main(int argc, char **argv)
                 MPI_Get_count(&status, istruct, &recv_j);
                 // fprintf(outfile, "total words to received: %d from source: %d\n",recv_j, status.MPI_SOURCE);
 
-                for (int i = 0; i < recv_j; i++)
+                for (i = 0; i < recv_j; i++)
                 {
                     pair recv_pair = recv_pairs[i];
                     int frequency = recv_pair.count;
@@ -348,7 +349,7 @@ int main(int argc, char **argv)
     FILE* fp = fopen(filename, "w");
     item* current;
     // printTable(sum_table);
-    for (int i = h_start; i < h_end; i++)
+    for (i = h_start; i < h_end; i++)
     {
         current = sum_table->entries[i];
         if (current == NULL)

@@ -92,7 +92,8 @@ void freeHT(struct ht* table){
 // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
 uint64_t hashcode(const char* key) {
     uint64_t hash = FNV_OFFSET;
-    for (const char* p = key; *p; p++) {
+    const char* p;
+    for (p = key; *p; p++) {
         hash ^= (uint64_t)(unsigned char)(*p);
         hash *= FNV_PRIME;
     }

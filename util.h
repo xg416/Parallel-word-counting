@@ -67,7 +67,8 @@ char* format_string(char* original)
     int len = strlen(original);
     char* word = (char*)malloc(len * sizeof(char));
     int c = 0;
-    for (int i = 0; i < len; i++)
+    int i;
+    for (i = 0; i < len; i++)
     {
         if (isalnum(original[i]) || original[i] == '\'')
         {
@@ -119,6 +120,7 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     char *line = NULL;
     int line_count = 0;
     int file_done = 0;
+    int i;
     int lines_per_iter = 30;
     int actual_lines;
     char *word = NULL;
@@ -127,7 +129,7 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     while (file_done != 1)
     {
         actual_lines = 0;
-        for (int i=0; i<lines_per_iter; i++){
+        for (i=0; i<lines_per_iter; i++){
             if (getline(&line, &len, filePtr) == -1) {
                 file_done = 1;
                 break;
@@ -139,7 +141,7 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
             }
         }
         omp_set_lock(queuelock);
-        for (int i=0; i<actual_lines; i++){
+        for (i=0; i<actual_lines; i++){
             if (temp_nodes[i] != NULL)
                 enQueueData(q, temp_nodes[i]);
         }
