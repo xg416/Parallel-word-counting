@@ -142,7 +142,7 @@ int main(int argc, char *argv[]){
        if (end > sum_table->capacity) end = sum_table->capacity;
 
        char* filename = (char*)malloc(sizeof(char) * 32);
-       sprintf(filename, "../output/openmp/%d.csv", id_thread);
+       sprintf(filename, "../output/openmp/%d.txt", id_thread);
        FILE* fp = fopen(filename, "w");
        for (i = start; i < end; i++)
        {
