@@ -47,8 +47,9 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
     MPI_Get_processor_name(p_name, &p_name_len);
-
+    printf("process id: %d/%d\n", pid, size);
     int nthreads = 4;
+    int nRM = nthreads/2;
     char files_dir[] = "../files";
     int repeat_files = 1;
     double global_time = 0;
@@ -164,17 +165,17 @@ int main(int argc, char **argv)
     local_time = -omp_get_wtime();
     omp_lock_t readlock;
     omp_init_lock(&readlock);
-    omp_lock_t queuelock[nthreads/2];
+    omp_lock_t queuelock[nRM];
 
     struct Queue **queues;
     struct ht **hash_tables;
 
     // we will divide the number of threads and use half for reading and half for mapping
     // therefore, only half the thread number of queues and hash_tables are required
-    queues = (struct Queue **)malloc(sizeof(struct Queue *) * nthreads);
-    hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nthreads);
+    queues = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
+    hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nRM);
 
-    for (int k=0; k<nthreads; k++) {
+    for (int k=0; k<nRM; k++) {
         omp_init_lock(&queuelock[k]);
         queues[k] = createQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
@@ -207,13 +208,13 @@ int main(int argc, char **argv)
             }
             // queues[threadn]->finished = 1;
         } else {
-            int thread = threadn - nthreads/2;
+            int thread = threadn - nRM;
             hash_tables[thread] = ht_create(HASH_CAPACITY);
             populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
         }  
     }
     omp_destroy_lock(&readlock);
-    for (int k=0; k<nthreads; k++) {
+    for (int k=0; k<nRM; k++) {
         omp_destroy_lock(&queuelock[k]);
     }
     MPI_Barrier(MPI_COMM_WORLD);
@@ -226,25 +227,29 @@ int main(int argc, char **argv)
      * Final sum reduction locally inside the process
      *****************************************************************************************/
     local_time = -omp_get_wtime();
-    struct ht *final_table = ht_create(HASH_CAPACITY);
-    #pragma omp parallel shared(final_table, hash_tables) num_threads(nthreads)
+    struct ht *sum_table = ht_create(HASH_CAPACITY);
+    #pragma omp parallel shared(sum_table, hash_tables) num_threads(nthreads)
     {
         int threadn = omp_get_thread_num();
         int tot_threads = omp_get_num_threads();
         int interval = HASH_CAPACITY / tot_threads;
         int start = threadn * interval;
         int end = start + interval;
-
-        if (end > final_table->itemcount) end = final_table->itemcount;
+        
+        if (end > HASH_CAPACITY) end = HASH_CAPACITY;
 
         int i;
-        ht_merge(final_table, hash_tables[i], start, end);
+        for (i = 0; i < nRM; i++)
+        {
+            ht_merge(sum_table, hash_tables[i], start, end);
+        }
     }
     MPI_Barrier(MPI_COMM_WORLD);
     local_time += omp_get_wtime();
     global_time += local_time;
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
+    // printTable(sum_table);
     // fprintf(stdout, "reduction inside the process done.. size: %d, rank: %d\n", size, pid);
 
 
@@ -290,7 +295,7 @@ int main(int argc, char **argv)
             struct item *current = NULL;
             for (int i = h_space * k; i < h_space * (k + 1); i++)
             {
-                current = final_table->entries[i];
+                current = sum_table->entries[i];
                 if (current == NULL)
                     continue;
                 else{
@@ -320,7 +325,7 @@ int main(int argc, char **argv)
                     pair recv_pair = recv_pairs[i];
                     int frequency = recv_pair.count;
 
-                    struct item *node = ht_update(final_table, recv_pair.word, recv_pair.count);
+                    struct item *node = ht_update(sum_table, recv_pair.word, recv_pair.count);
                 }
             }
         }
@@ -337,17 +342,18 @@ int main(int argc, char **argv)
      * write function should be only called for the respective section of the
      *****************************************************************************************/
 
-    // local_time = -omp_get_wtime();
+    local_time = -omp_get_wtime();
     char* filename = (char*)malloc(sizeof(char) * 32);
     sprintf(filename, "../output/mpi/%d.txt", pid);
     FILE* fp = fopen(filename, "w");
     item* current;
+    // printTable(sum_table);
     for (int i = h_start; i < h_end; i++)
     {
-        current = final_table->entries[i];
+        current = sum_table->entries[i];
         if (current == NULL)
             continue;
-        //    printf("i: %d, key: %s, count: %d\n", i, current->key, current->count); 
+        // printf("i: %d, key: %s, count: %d, start, end: %d %d\n", i, current->key, current->count, h_start, h_end); 
         fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
     }
     fclose(fp);
