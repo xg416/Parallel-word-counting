@@ -52,15 +52,12 @@ int main(int argc, char **argv)
     int nRM = nthreads/2;
     char files_dir[] = "../files";
     int repeat_files = 1;
-    double global_time = 0;
+    double global_time = -MPI_Wtime();
     double local_time = 0;
     char csv_out[400] = "";
     char tmp_out[200] = "";
 
-    MPI_Request request;
-    MPI_Status status;
     int recv_pid;
-    int recv_len = 0;
     int i, k;
 
     int count = 0;
@@ -70,20 +67,11 @@ int main(int argc, char **argv)
 
     struct Queue *file_name_queue;
     file_name_queue = createQueue();
-    struct Queue *files_to_read;
+    struct Queue *local_file_queue;
     MPI_Barrier(MPI_COMM_WORLD);
-    local_time = -omp_get_wtime();
+    
 
-    char *file_names = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE * 1000);
-
-    /*****************************************************************************************
-     * Share files among the processes
-     * If there are 15 files are 4 processes
-     * 00,01,02,03 is sent to process 0 | 04,05,06,07 is sent to process 1
-     * 08,09,10,11 is sent to process 2 | 12,13,14    is sent to process 3
-     *****************************************************************************************/
-    if (pid == 0)
-    {
+    if (pid==0){
         for (i = 0; i < repeat_files; i++)
         {
             int files = get_file_list(file_name_queue, files_dir);
@@ -94,141 +82,116 @@ int main(int argc, char **argv)
             }
             file_count += files;
         }
-
-        int num_files_to_send = file_count / size;
-        int spare = file_count % size;
-
-        // iterate for all process ids in the comm world
-        for (i = 0; i < size; i++)
-        {
-            char *concat_files =
-                (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE * num_files_to_send);
-            int len = 0;
-            int j;
-            int send_file_count = num_files_to_send;
-            if (spare>0) {
-                send_file_count += 1;
-                spare--;
-            }
-
-            // concat file names to one big char array for ease of sending
-            for (j = 0; j < send_file_count; j++)
-            {
-                if (j == 0)
-                {
-                    strcpy(concat_files, file_name_queue->front->line);
-                }
-                else
-                {
-                    strcat(concat_files, file_name_queue->front->line);
-                }
-                len += file_name_queue->front->len + 1;
-                if (j != send_file_count - 1)
-                {
-                    strcat(concat_files, ",");
-                }
-                deQueue(file_name_queue);
-            }
-            if (i == 0)
-            { // send to other processes
-                strcpy(file_names, concat_files);
-                recv_len = len;
-            }
-            else
-            {
-                MPI_Send(concat_files, len + 1, MPI_CHAR, i, TAG_COMM_FILE_NAME,
-                         MPI_COMM_WORLD);
-            }
-        }
-    }
-    else
-    {
-        MPI_Status status;
-        MPI_Recv(file_names, FILE_NAME_BUF_SIZE * 1000, MPI_CHAR, 0,
-                 TAG_COMM_FILE_NAME, MPI_COMM_WORLD, &status);
-        MPI_Get_count(&status, MPI_CHAR, &recv_len);
     }
 
-    char *file;
-    int received_file_count = 0;
-    while ((file = strtok_r(file_names, ",", &file_names)))
-    {
-        if (strlen(file) > 0)
-        {
-            enQueue(file_name_queue, file, strlen(file));
-            received_file_count++;
-        }
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-    local_time += omp_get_wtime();
-    global_time += local_time;
-    strcat(csv_out, tmp_out);   
-
-    local_time = -omp_get_wtime();
-    omp_lock_t readlock;
-    omp_init_lock(&readlock);
+    /*****************************************************************************************
+     * Share files among the processes
+     * master node send to other nodes on request
+     *****************************************************************************************/
+    // reader and mapper setting
+    omp_lock_t requestlock;
+    omp_init_lock(&requestlock);
     omp_lock_t queuelock[nRM];
-
     struct Queue **queues;
     struct ht **hash_tables;
-
-    // we will divide the number of threads and use half for reading and half for mapping
-    // therefore, only half the thread number of queues and hash_tables are required
     queues = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
     hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nRM);
-
+    
+    local_time = -omp_get_wtime();
+    #pragma omp parallel for 
     for (k=0; k<nRM; k++) {
         omp_init_lock(&queuelock[k]);
         queues[k] = createQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
-    }
-
-    /*****************************************************************************************
-     * Read and map section
-     * if par_read_map is set to 1, half the threads are doing reading while the other half
-     * threads are mapping -- this happens in parallel
-     * if par_read_map is set to 0, the all the threads run reading and mapping functions 
-     * in a sequential manner. But the complete process is run in parallel by multiple threads
-     *****************************************************************************************/
-    #pragma omp parallel shared(queues, hash_tables, file_name_queue, readlock, queuelock) num_threads(nthreads)
-    {
-        int threadn = omp_get_thread_num();
-        if (threadn < nthreads/2) {
-            while (file_name_queue->front != NULL)
-            {
-                char file_name[30];
-                omp_set_lock(&readlock);
-                if (file_name_queue->front == NULL) {
-                    omp_unset_lock(&readlock);
-                    continue;
+    }    
+    local_time += omp_get_wtime();
+    if (pid==0) printf("initialization takes time %f\n", local_time); 
+    
+    // cross node filename allocation setting
+    MPI_Status status;
+    MPI_Request request;
+    int recv_len = 0;
+    char empty_flag[] = "all done";
+    double t1, t2; 
+    t1 = MPI_Wtime();
+    // start allocating filenames then read & map
+    if (pid == 0){
+        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
+        char *send_file = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
+        int len;
+        int recv_pid = 0;
+        int nRM_tot = (size-1) * nRM;
+        
+        #pragma omp parallel shared(queues, hash_tables, file_name_queue, requestlock, queuelock) num_threads(nthreads+1)
+        {
+            char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
+            int threadn = omp_get_thread_num();
+            if (threadn == nthreads){
+                while (file_name_queue->front != NULL){
+                    MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
+                    strcpy(send_file, file_name_queue->front->line);
+                    len = file_name_queue->front->len;
+                    MPI_Send(send_file, len + 1, MPI_CHAR, recv_pid, TAG_COMM_FILE_NAME, MPI_COMM_WORLD);
+                    omp_set_lock(&requestlock);
+                    deQueue(file_name_queue);
+                    omp_unset_lock(&requestlock);
+                    if (file_name_queue->front == NULL) break;
                 }
-                strcpy(file_name, file_name_queue->front->line);
-                deQueue(file_name_queue);
-                omp_unset_lock(&readlock);
-
-                populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
+                while(nRM_tot){
+                    send_file = empty_flag;
+                    MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
+                    MPI_Send(send_file, len + 1, MPI_CHAR, recv_pid, TAG_COMM_FILE_NAME, MPI_COMM_WORLD);
+                    nRM_tot--;
+                }
             }
-            // queues[threadn]->finished = 1;
-        } else {
-            int thread = threadn - nRM;
-            hash_tables[thread] = ht_create(HASH_CAPACITY);
-            populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
-        }  
+            else if(threadn < nRM){
+                while (file_name_queue->front != NULL){
+                    omp_set_lock(&requestlock);
+                    strcpy(file_name, file_name_queue->front->line);
+                    deQueue(file_name_queue);
+                    omp_unset_lock(&requestlock);
+                    printf("pid %d thread %d received file %s \n", pid, threadn, file_name);
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);    
+                }
+            }
+            else{
+                int thread = threadn - nRM;
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+            }
+        }
     }
-    omp_destroy_lock(&readlock);
+    else{   
+        #pragma omp parallel shared(queues, hash_tables, requestlock, queuelock) num_threads(nthreads)
+        {
+            char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
+            int threadn = omp_get_thread_num();
+            if (threadn < nRM) {
+                while (strcmp(file_name, empty_flag)!=0){
+                    omp_set_lock(&requestlock);
+                    MPI_Send(&pid, 1, MPI_INT, 0, TAG_COMM_REQ_DATA, MPI_COMM_WORLD);
+                    MPI_Recv(file_name, FILE_NAME_BUF_SIZE, MPI_CHAR, 0, TAG_COMM_FILE_NAME, MPI_COMM_WORLD, &status);
+                    // MPI_Wait(&request, &status);
+                    MPI_Get_count(&status, MPI_CHAR, &recv_len);
+                    omp_unset_lock(&requestlock);
+                    printf("pid %d thread %d received file %s, len %d \n", pid, threadn, file_name, recv_len);
+                    if (strcmp(file_name, empty_flag)==0) break;
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
+                }
+            }
+            else{
+                int thread = threadn - nRM;
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+            }
+        }
+    }
+    omp_destroy_lock(&requestlock);
     for (k=0; k<nRM; k++) {
         omp_destroy_lock(&queuelock[k]);
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    local_time += omp_get_wtime();
-    global_time += local_time;
-    sprintf(tmp_out, "%.4f, ", local_time);
-    strcat(csv_out, tmp_out);
-
-    /*****************************************************************************************
-     * Final sum reduction locally inside the process
-     *****************************************************************************************/
-    local_time = -omp_get_wtime();
+    t2 = MPI_Wtime(); 
+    if (pid==0) printf("file processing and mapping time is %f\n", t2 - t1); 
+    
     struct ht *sum_table = ht_create(HASH_CAPACITY);
     #pragma omp parallel shared(sum_table, hash_tables) num_threads(nthreads)
     {
@@ -246,15 +209,6 @@ int main(int argc, char **argv)
             ht_merge(sum_table, hash_tables[j], start, end);
         }
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-    local_time += omp_get_wtime();
-    global_time += local_time;
-    sprintf(tmp_out, "%.4f, ", local_time);
-    strcat(csv_out, tmp_out);
-    // printTable(sum_table);
-    // fprintf(stdout, "reduction inside the process done.. size: %d, rank: %d\n", size, pid);
-
-
     /*****************************************************************************************
      * Send/Receive [{word,count}] Array of Structs to/from other processes 
      *****************************************************************************************/
@@ -359,7 +313,7 @@ int main(int argc, char **argv)
     }
     fclose(fp);
     local_time += omp_get_wtime();
-    global_time += local_time;
+    global_time += MPI_Wtime();
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
     sprintf(tmp_out, "%.4f", global_time);
@@ -369,7 +323,7 @@ int main(int argc, char **argv)
         fprintf(stdout, "Num_Files, Hash_size, Num_Processes, Num_Threads, Par_Read_Map, FS_Time, Read_Map, Local_Reduce, Final_Reduce, Write, Total\n%s\n\n", 
             csv_out);
     }
-
+    
     MPI_Finalize();
     return 0;
 }

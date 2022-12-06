@@ -54,10 +54,16 @@ int main(int argc, char *argv[]){
     struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
     
     omp_lock_t linesQlocks[nRM];
-    for (k = 0; k < nRM; k++)
+    #pragma omp parallel num_threads(nThreads)
     {
-        omp_init_lock(&linesQlocks[k]);
-        queueList[k] = createQueue();
+        int i = omp_get_thread_num();
+        if (i<nRM){
+            omp_init_lock(&linesQlocks[i]);
+            queueList[i] = createQueue();   
+        }
+        else{
+            tables[i-nRM] = ht_create(HASH_CAPACITY);
+        }
     }
     
     /********************** reader and mapper **********************************/
@@ -83,7 +89,6 @@ int main(int argc, char *argv[]){
         }
         else{
             //mapper threads
-            tables[i-nRM] = ht_create(HASH_CAPACITY);
             populateHashMapWL(queueList[i-nRM], tables[i-nRM], &linesQlocks[i-nRM]); 
         }
     }
