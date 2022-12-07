@@ -17,6 +17,7 @@ struct QNode
 
 struct Queue
 {
+	int NoMoreNode;
 	struct QNode *front, *rear;
 } queue;
 
@@ -34,6 +35,7 @@ struct Queue *createQueue()
 {
 	struct Queue *q = (struct Queue *)malloc(sizeof(struct Queue));
 	q->front = q->rear = NULL;
+	q->NoMoreNode = 0;
 	return q;
 }
 

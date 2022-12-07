@@ -15,6 +15,13 @@ extern int DEBUG_MODE;
 
 #define FILE_NAME_BUF_SIZE 50
 
+void delay(int milli_seconds)
+{  
+    // Storing start time
+    clock_t start_time = clock();
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds);
+}
 
 int get_file_list(struct Queue *file_name_queue, char *dirpath)
 {
@@ -176,8 +183,9 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
         line_count++;
         omp_unset_lock(queuelock);
     }
-    // printf("line count %d, %s\n", line_count, file_name);
+    // printf("pid, tid: %d %d, line count %d, %s\n", pid, tid, line_count, file_name);
     fclose(filePtr);
+    q->NoMoreNode = 1;
     free(line);
 }
 
@@ -187,12 +195,18 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
     struct item* node = NULL;
     struct QNode* temp = NULL;
     // wait until queue is good to start. Useful for parallel accesses.
+    // printf("pid tid: %d %d waiting queue \n", pid, tid);
     while (q == NULL)
         continue;
-    while (q->front)
+    // if (q->front == NULL && !q->NoMoreNode) {printf("pid tid: %d %d: q->front is NULL \n", pid, tid);}
+    
+    while (q->front || !q->NoMoreNode)
     {
+        // printf("pid tid: %d %d entered while loop \n", pid, tid);
+        // printf("pid tid: %d %d start processing lines\n", pid, tid);
         // this block should be locked ------------------------------------------------------------------------------//
         omp_set_lock(queuelock);
+        // printf("q->front: %s \n", q->front->line);
         if (q->front == NULL) {
             omp_unset_lock(queuelock);
             continue;
@@ -200,9 +214,9 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
 
         temp = q->front;
         q->front = q->front->next;
+        // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
         // If front becomes NULL, then change rear also as NULL
-        if (q->front == NULL)
-            q->rear = NULL;
+        if (q->front == NULL) q->rear = NULL;
 
         omp_unset_lock(queuelock);
         char str[temp->len];
@@ -223,6 +237,7 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             char* word = format_string(token);
             if (strlen(word) > 0)
             {
+                // printf("word %s \n", word);
                 node = ht_update(hashMap, word, 1);
             }
             free(word);
