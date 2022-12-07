@@ -31,6 +31,17 @@ struct QNode *newNode(char *line, size_t len)
 	return temp;
 }
 
+struct QNode *newNodeHashKey(char *line, size_t count)
+{
+	struct QNode *temp = (struct QNode *)malloc(sizeof(struct QNode));
+	size_t len = strlen(line) + 1;
+	temp->line = (char *)malloc(len * sizeof(char));
+	strcpy(temp->line, line);
+	temp->len = count;
+	temp->next = NULL;
+	return temp;
+}
+
 struct Queue *createQueue()
 {
 	struct Queue *q = (struct Queue *)malloc(sizeof(struct Queue));
@@ -75,6 +86,13 @@ void enQueue(struct Queue *q, char *line, size_t len)
 {
 	// Create a new LL node
 	struct QNode *temp = newNode(line, len);
+	enQueueData(q, temp);
+}
+
+void enQueueHashKey(struct Queue *q, char *line, size_t len)
+{
+	// Create a new LL node
+	struct QNode *temp = newNodeHashKey(line, len);
 	enQueueData(q, temp);
 }
 

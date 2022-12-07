@@ -8,7 +8,7 @@
 #include "util.h"
 #include "ht.h"
 
-
+// omp with reduce queue
 #define HASH_CAPACITY 65536
 
 int main(int argc, char *argv[]){
@@ -28,7 +28,7 @@ int main(int argc, char *argv[]){
     ht **tables, **reduceTables;
     tables = (ht**)malloc(sizeof(struct ht*) * nRM);
     reduceTables = (ht**)malloc(sizeof(struct ht*) * nThreads);
-    
+
     omp_set_num_threads(nThreads);
     omp_lock_t filesQlock;
     omp_init_lock(&filesQlock);
@@ -51,12 +51,14 @@ int main(int argc, char *argv[]){
     printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
     struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
+    struct Queue **reduceQueues = (struct Queue **)malloc(sizeof(struct Queue *) * nThreads);
     
     omp_lock_t linesQlocks[nRM];
     #pragma omp parallel num_threads(nThreads)
     {
         int i = omp_get_thread_num();
         reduceTables[i] = ht_create(HASH_CAPACITY/nThreads);
+        reduceQueues[i] = createQueue();
         if (i<nRM){
             omp_init_lock(&linesQlocks[i]);
             queueList[i] = createQueue();   
@@ -100,25 +102,35 @@ int main(int argc, char *argv[]){
     sprintf(tmp_out, "%.4f, ", local_time);
     strcat(csv_out, tmp_out);
     printf("Done Populating lines! Time taken: %f\n", local_time);
+    
+    //while (queue->front != NULL)//verification of the work queue
+    //{
+    //    printf("%s", queue->front->line);
+    //    queue->front = queue->front->next;
+    //}
 
     /********************** reduction **********************************/
-    omp_lock_t reduceQlock;
-    omp_init_lock(&reduceQlock);
     local_time = -omp_get_wtime();
-    #pragma omp parallel
+    int id_thread;
+    // omp_lock_t reduceQlocks[nThreads];
+    
+    #pragma omp parallel num_threads(nThreads)
     {
+        // omp_init_lock(&reduceQlocks[id_thread]);
         int id_thread = omp_get_thread_num();
         int interval = HASH_CAPACITY / nThreads;
         int start = id_thread * interval;
         int end = start + interval;
         int i;
         // if (id_thread == 0){printTable(tables[0]);}
-
+        
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
         for (i = 0; i < nRM; i++)
         {
-            ht_merge_remap(reduceTables[id_thread], tables[i], start, end);
+            populateRQ(reduceQueues[id_thread], tables[i], start, end, id_thread);
         }
+        queueToHtWoL(reduceQueues[id_thread], reduceTables[id_thread]);
+        free(reduceQueues[id_thread]);
     }
     local_time += omp_get_wtime();
     printf("time for reduction %f \n ", local_time);
@@ -152,7 +164,7 @@ int main(int argc, char *argv[]){
         freeQueue(queueList[k]);
     }
     free(queueList);
-    
+    free(reduceTables);
     
     global_time += omp_get_wtime();
     printf("total time taken for the execution: %f\n", global_time);

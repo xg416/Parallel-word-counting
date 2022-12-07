@@ -88,6 +88,7 @@ void ht_mergeWL(ht* tgt_table, ht* src_table, int start, int end, omp_lock_t* re
     }
 }
 
+
 void ht_merge(ht* tgt_table, ht* src_table, int start, int end)
 {
     int i;
@@ -100,6 +101,29 @@ void ht_merge(ht* tgt_table, ht* src_table, int start, int end)
             continue;
         else{
             tgt_get = ht_update(tgt_table, current->key, current->count);
+        }
+    }
+}
+
+void ht_merge_remap(ht* tgt_table, ht* src_table, int start, int end)
+{
+    int i, hscode;
+    item *current, *tgt_get;
+    int table_size = src_table->capacity;
+    for (i = 0; i < table_size; i++)
+    {
+        current = src_table->entries[i];
+        if (current == NULL)
+            continue;
+        else{
+            hscode = hashcode(current->key) % table_size;
+            if (hscode >= start && hscode < end){
+                tgt_get = ht_update(tgt_table, current->key, current->count);
+            }
+            else{
+                continue;
+            }
+            
         }
     }
 }
@@ -259,13 +283,9 @@ void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //,
     int hscode;
     struct item *current;
     int table_size = src_table->capacity;
-    int Qcount = 0;
-    printf("start populateRQ %d, start %d, end %d \n", tid, start, end);
     for (i = 0; i < table_size; i++)
     {
-        // omp_set_lock(htlock);
         current = src_table->entries[i];
-        // omp_unset_lock(htlock);
         if (current == NULL)
             continue;
         else{
@@ -274,12 +294,8 @@ void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //,
             hscode = hashcode(key) % table_size;
             if (hscode >= start && hscode < end){
                 len = (size_t) current->count;
-                // 
-                enQueue(q, key, len); 
-                // 
+                enQueueHashKey(q, key, len); 
                 free(key);
-                Qcount++;
-                // printf("In populateRQ %d, qcount %d \n", tid, Qcount);
             }
             else{
                 continue;
@@ -287,7 +303,6 @@ void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //,
         }
     }
     q->NoMoreNode = 1;
-    printf("end populateRQ %d qcount %d, start %d, end %d \n", tid, Qcount, start, end);
 }
 
 
@@ -298,7 +313,6 @@ void queueToHtWoL(struct Queue* q, ht* hashMap)
     int count;
     // wait until queue is good to start. Useful for parallel accesses.
     // printf("pid tid: %d %d waiting queue \n", pid, tid);
-    printf("entered queueToHtWoL \n");
     while (q->front){
         temp = deQueueData(q);
         // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
@@ -315,3 +329,4 @@ void queueToHtWoL(struct Queue* q, ht* hashMap)
         }
     }
 }
+
