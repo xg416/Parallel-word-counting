@@ -100,6 +100,17 @@ uint64_t hashcode(const char* key) {
     return hash;
 }
 
+// uint64_t hashcode(const char *key)
+// {
+//     int i;
+//     uint64_t hash = 7;
+//     int length = strlen(key);
+
+//     for (i = 0; i < length; i++)
+//         hash = (hash * 31) + *(key + i);
+//     return hash & 0x7FFFFFFF; /* Make value positive */
+// }
+
 item *ht_update(struct ht* table, char *key, int count)
 {
     struct item *my_item;
@@ -127,21 +138,6 @@ item *ht_update(struct ht* table, char *key, int count)
     return my_item;
 }
 
-void ht_merge(ht* tgt_table, ht* src_table, int start, int end)
-{
-    int i;
-    item *current, *tgt_get;
-
-    for (i = start; i < end; i++)
-    {
-        current = src_table->entries[i];
-        if (current == NULL)
-            continue;
-        else{
-            tgt_get = ht_update(tgt_table, current->key, current->count);
-        }
-    }
-}
 
 void printTable(ht *table)
 {

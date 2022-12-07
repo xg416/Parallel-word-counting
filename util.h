@@ -56,7 +56,7 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
         #pragma omp critical
         {
             // To be executed only by one thread at a time as there is a single queue
-            enQueue(file_name_queue, file_name, strlen(file_name));
+            enQueue(file_name_queue, file_name, strlen(file_name)+1);
             file_count++;
         }
     }
@@ -66,16 +66,57 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
     return file_count;
 }
 
+void ht_mergeWL(ht* tgt_table, ht* src_table, int start, int end, omp_lock_t* reducelock)
+{
+    int i;
+    int count;
+    int hscode;
+    item *current, *tgt_get;
+    for (i = 0; i < src_table->capacity; i++)
+    {
+        current = src_table->entries[i];
+        if (current == NULL)
+            continue;
+        else{
+            hscode = hashcode(current->key) % src_table->capacity;
+            if (hscode >= start && hscode < end){
+                omp_set_lock(reducelock);
+                tgt_get = ht_update(tgt_table, current->key, current->count);
+                omp_unset_lock(reducelock);
+            } 
+        }
+    }
+}
+
+void ht_merge(ht* tgt_table, ht* src_table, int start, int end)
+{
+    int i;
+    item *current, *tgt_get;
+
+    for (i = start; i < end; i++)
+    {
+        current = src_table->entries[i];
+        if (current == NULL)
+            continue;
+        else{
+            tgt_get = ht_update(tgt_table, current->key, current->count);
+        }
+    }
+}
 /**
  * Format string with only lower case alphabetic letters
  */
-char* format_string(char* original)
+char* toLower(char* s) {
+  for(char *p=s; *p; p++) *p=tolower(*p);
+  return s;
+}
+
+char *format_string(char *original)
 {
-    int len = strlen(original);
-    char* word = (char*)malloc(len * sizeof(char));
+    int len = strlen(original)+1;
+    char *word = (char *)malloc(len * sizeof(char));
     int c = 0;
-    int i;
-    for (i = 0; i < len; i++)
+    for (int i = 0; i < len; i++)
     {
         if (isalnum(original[i]) || original[i] == '\'')
         {
@@ -86,6 +127,18 @@ char* format_string(char* original)
     word[c] = '\0';
     return word;
 }
+
+// char* format_string(char* s)
+// {
+//     for (char *p=s; *p; p++)
+//     {
+//         if (isalnum(*p) || *p == '\'')
+//         {
+//             *p = tolower(*p);
+//         }
+//     }
+//     return s;
+// }
 
 void populateQueue(struct Queue *q, char *file_name)
 {
@@ -112,56 +165,6 @@ void populateQueue(struct Queue *q, char *file_name)
     free(line);
 }
 
-
-void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
-{
-    // file open operation
-    FILE *filePtr;
-    if ((filePtr = fopen(file_name, "r")) == NULL)
-    {
-        fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    // read line by line from the file and add to the queue
-    size_t len = 0;
-    ssize_t n;
-    char *line = NULL;
-    int line_count = 0;
-    int file_done = 0;
-    int i;
-    int lines_per_iter = 30;
-    int actual_lines;
-    char *word = NULL;
-    struct QNode **temp_nodes;
-    temp_nodes = (struct QNode **) malloc(sizeof(struct QNode *) * lines_per_iter);
-    while (file_done != 1)
-    {
-        actual_lines = 0;
-        for (i=0; i<lines_per_iter; i++){ 
-            n = getline(&line, &len, filePtr);
-            if (n == -1) {
-                file_done = 1;
-                break;
-            } else {
-                // separated out the node creation to save some time lost due to locking
-                temp_nodes[i] = newNode(line, n+1);
-                actual_lines++;
-                line_count++;
-            }
-        }
-        omp_set_lock(queuelock);
-        for (i=0; i<actual_lines; i++){
-            if (temp_nodes[i] != NULL)
-                enQueueData(q, temp_nodes[i]);
-        }
-        omp_unset_lock(queuelock);
-
-    }
-    // printf("line count %d, %s\n", line_count, file_name);
-    fclose(filePtr);
-    free(line);
-}
 
 void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queuelock)
 {
@@ -192,33 +195,6 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
     q->NoMoreNode = 1;
     free(line);
 }
-
-void populateRQ(struct Queue *q, ht* src_table, int start, int end, omp_lock_t *queuelock)
-{
-    char *line = NULL;
-    size_t len;
-    int i;
-    struct QNode *temp_node;
-    struct item *current;
-
-    for (i = start; i < end; i++)
-    {
-        current = src_table->entries[i];
-        if (current == NULL)
-            continue;
-        else{
-            line = strdup(current->key);
-            len = current->count;
-            temp_node = newNode(line, (size_t) len);
-            omp_set_lock(queuelock);
-            enQueueData(q, temp_node);
-            omp_unset_lock(queuelock);
-        }
-    }
-    q->NoMoreNode = 1;
-    free(line);
-}
-
 
 void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queuelock)
 {
@@ -270,6 +246,71 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
                 // printf("word %s \n", word);
                 node = ht_update(hashMap, word, 1);
             }
+            free(word);
+        }
+    }
+}
+
+
+void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //, omp_lock_t* htlock)
+{
+    size_t len;
+    int i;
+    int hscode;
+    struct item *current;
+    int table_size = src_table->capacity;
+    int Qcount = 0;
+    printf("start populateRQ %d, start %d, end %d \n", tid, start, end);
+    for (i = 0; i < table_size; i++)
+    {
+        // omp_set_lock(htlock);
+        current = src_table->entries[i];
+        // omp_unset_lock(htlock);
+        if (current == NULL)
+            continue;
+        else{
+            char *key = NULL;
+            key = strdup(current->key);
+            hscode = hashcode(key) % table_size;
+            if (hscode >= start && hscode < end){
+                len = (size_t) current->count;
+                // 
+                enQueue(q, key, len); 
+                // 
+                free(key);
+                Qcount++;
+                // printf("In populateRQ %d, qcount %d \n", tid, Qcount);
+            }
+            else{
+                continue;
+            }
+        }
+    }
+    q->NoMoreNode = 1;
+    printf("end populateRQ %d qcount %d, start %d, end %d \n", tid, Qcount, start, end);
+}
+
+
+void queueToHtWoL(struct Queue* q, ht* hashMap)
+{
+    struct item* node = NULL;
+    struct QNode* temp = NULL;
+    int count;
+    // wait until queue is good to start. Useful for parallel accesses.
+    // printf("pid tid: %d %d waiting queue \n", pid, tid);
+    printf("entered queueToHtWoL \n");
+    while (q->front){
+        temp = deQueueData(q);
+        // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
+        // If front becomes NULL, then change rear also as NULL
+        if (q->front == NULL) q->rear = NULL;
+        char *word = NULL;
+        word = strdup(temp->line);
+        count = (int) temp->len;
+        if (temp != NULL) {
+            node = ht_update(hashMap, word, count);
+            free(temp->line);
+            free(temp);
             free(word);
         }
     }
