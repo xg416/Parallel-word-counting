@@ -98,12 +98,13 @@ void populateQueue(struct Queue *q, char *file_name)
     }
 
     // read line by line from the file and add to the queue
-    size_t len = 0;
+    size_t len;
     char *line = NULL;
     int line_count = 0;
-    while (getline(&line, &len, filePtr) != -1)
+    ssize_t n;
+    while ((n = getline(&line, &len, filePtr)) != -1)
     {
-        enQueue(q, line, len);
+        enQueue(q, line, n+1);
         line_count++;
     }
     // printf("line count %d, %s\n", line_count, file_name);
@@ -124,6 +125,7 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
 
     // read line by line from the file and add to the queue
     size_t len = 0;
+    ssize_t n;
     char *line = NULL;
     int line_count = 0;
     int file_done = 0;
@@ -136,13 +138,14 @@ void populateQueueWL_ML(struct Queue *q, char *file_name, omp_lock_t *queuelock)
     while (file_done != 1)
     {
         actual_lines = 0;
-        for (i=0; i<lines_per_iter; i++){
-            if (getline(&line, &len, filePtr) == -1) {
+        for (i=0; i<lines_per_iter; i++){ 
+            n = getline(&line, &len, filePtr);
+            if (n == -1) {
                 file_done = 1;
                 break;
             } else {
                 // separated out the node creation to save some time lost due to locking
-                temp_nodes[i] = newNode(line, len);
+                temp_nodes[i] = newNode(line, n+1);
                 actual_lines++;
                 line_count++;
             }
@@ -172,19 +175,46 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
 
     // read line by line from the file and add to the queue
     size_t len = 0;
+    ssize_t n;
     char *line = NULL;
     int line_count = 0;
     struct QNode *temp_node;
-    while (getline(&line, &len, filePtr) != -1)
+    while ((n = getline(&line, &len, filePtr)) != -1)
     {
         omp_set_lock(queuelock);
-        temp_node = newNode(line, len);
+        temp_node = newNode(line, n+1);
         enQueueData(q, temp_node);
         line_count++;
         omp_unset_lock(queuelock);
     }
     // printf("pid, tid: %d %d, line count %d, %s\n", pid, tid, line_count, file_name);
     fclose(filePtr);
+    q->NoMoreNode = 1;
+    free(line);
+}
+
+void populateRQ(struct Queue *q, ht* src_table, int start, int end, omp_lock_t *queuelock)
+{
+    char *line = NULL;
+    size_t len;
+    int i;
+    struct QNode *temp_node;
+    struct item *current;
+
+    for (i = start; i < end; i++)
+    {
+        current = src_table->entries[i];
+        if (current == NULL)
+            continue;
+        else{
+            line = strdup(current->key);
+            len = current->count;
+            temp_node = newNode(line, (size_t) len);
+            omp_set_lock(queuelock);
+            enQueueData(q, temp_node);
+            omp_unset_lock(queuelock);
+        }
+    }
     q->NoMoreNode = 1;
     free(line);
 }

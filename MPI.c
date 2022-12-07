@@ -217,9 +217,9 @@ int main(int argc, char **argv)
     /*****************************************************************************************
      * Send/Receive [{word,count}] Array of Structs to/from other processes 
      *****************************************************************************************/
-    if (pid==3) {
-        printTable(sum_table);
-    }
+    // if (pid==3) {
+    //     printTable(sum_table);
+    // }
     local_time = -omp_get_wtime();
     /*
     * add reduction - hashtable should be communicated amoung the
