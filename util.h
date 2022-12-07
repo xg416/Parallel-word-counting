@@ -130,11 +130,6 @@ void ht_merge_remap(ht* tgt_table, ht* src_table, int start, int end)
 /**
  * Format string with only lower case alphabetic letters
  */
-char* toLower(char* s) {
-  for(char *p=s; *p; p++) *p=tolower(*p);
-  return s;
-}
-
 char *format_string(char *original)
 {
     int len = strlen(original)+1;
@@ -151,18 +146,6 @@ char *format_string(char *original)
     word[c] = '\0';
     return word;
 }
-
-// char* format_string(char* s)
-// {
-//     for (char *p=s; *p; p++)
-//     {
-//         if (isalnum(*p) || *p == '\'')
-//         {
-//             *p = tolower(*p);
-//         }
-//     }
-//     return s;
-// }
 
 void populateQueue(struct Queue *q, char *file_name)
 {
@@ -220,6 +203,35 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
     free(line);
 }
 
+void populateHashMap(struct Queue *q, ht *hashMap)
+{
+    struct item* node = NULL;
+    // wait until queue is good to start. Useful for parallel accesses.
+    while (q == NULL)
+        continue;
+    while (q->front)
+    {
+        if (q->front == NULL) {
+            continue;
+        }
+        char str[q->front->len];
+        strcpy(str, q->front->line);
+        char *token;
+        char *rest = str;
+        // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
+        while ((token = strtok_r(rest, " ", &rest)))
+        {
+            char *word = format_string(token);
+            if (strlen(word) > 0)
+            {
+                node = ht_update(hashMap, word, 1);
+            }
+            free(word);
+        }
+        deQueue(q);
+    }
+}
+
 void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queuelock)
 {
     struct item* node = NULL;
@@ -232,11 +244,8 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
     
     while (q->front || !q->NoMoreNode)
     {
-        // printf("pid tid: %d %d entered while loop \n", pid, tid);
-        // printf("pid tid: %d %d start processing lines\n", pid, tid);
         // this block should be locked ------------------------------------------------------------------------------//
         omp_set_lock(queuelock);
-        // printf("q->front: %s \n", q->front->line);
         if (q->front == NULL) {
             omp_unset_lock(queuelock);
             continue;
@@ -244,7 +253,6 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
 
         temp = q->front;
         q->front = q->front->next;
-        // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
         // If front becomes NULL, then change rear also as NULL
         if (q->front == NULL) q->rear = NULL;
 
@@ -257,7 +265,6 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             free(temp->line);
             free(temp);
         }
-
 
         char* token;
         char* rest = str;

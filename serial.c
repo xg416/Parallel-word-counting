@@ -51,18 +51,15 @@ int main(int argc, char *argv[]){
     printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
 
-    omp_lock_t linesQlock;
-    omp_init_lock(&linesQlock);
-
     /********************** reader and mapper **********************************/
     char file_name[FILE_NAME_BUF_SIZE * 3];
     while (file_name_queue->front != NULL) {
         printf("thread: %d, filename: %s\n", 0, file_name_queue->front->line);
         strcpy(file_name, file_name_queue->front->line);
         deQueue(file_name_queue);
-        populateQueueDynamic(wordQueue, file_name, &linesQlock);
+        populateQueue(wordQueue, file_name);
     }     
-    populateHashMapWL(wordQueue, sum_table, &linesQlock); 
+    populateHashMap(wordQueue, sum_table); 
 
     local_time += omp_get_wtime();
     sprintf(tmp_out, "%.4f, ", local_time);
