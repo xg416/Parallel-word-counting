@@ -102,4 +102,17 @@ void freeQueue(struct Queue *q)
 	}
 }
 
+void printQueue(struct Queue *q)
+{
+	struct QNode *temp;
+	int count=0;
+	while(q->front){
+		temp = q->front;
+		char str[temp->len];
+		strcpy(str, temp->line);
+		count++;
+		printf("id %d, line: %s, len: %d \n", count, str, temp->len);
+	}
+}
+
 #endif
