@@ -111,6 +111,7 @@ void printQueue(struct Queue *q)
 		char str[temp->len];
 		strcpy(str, temp->line);
 		count++;
+		q->front = q->front->next;
 		printf("id %d, line: %s, len: %d \n", count, str, temp->len);
 	}
 }
