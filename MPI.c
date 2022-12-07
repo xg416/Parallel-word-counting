@@ -103,9 +103,10 @@ int main(int argc, char **argv)
         omp_init_lock(&queuelock[k]);
         queues[k] = createQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
-    }    
+    } 
     local_time += omp_get_wtime();
     if (pid==0) printf("initialization takes time %f\n", local_time); 
+    MPI_Barrier(MPI_COMM_WORLD);
     
     // cross node filename allocation setting
     MPI_Status status;
@@ -151,12 +152,12 @@ int main(int argc, char **argv)
                     deQueue(file_name_queue);
                     omp_unset_lock(&requestlock);
                     printf("pid %d thread %d received file %s \n", pid, threadn, file_name);
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);    
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn], pid, threadn);    
                 }
             }
             else{
                 int thread = threadn - nRM;
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread], pid, threadn);
             }
         }
     }
@@ -173,17 +174,21 @@ int main(int argc, char **argv)
                     // MPI_Wait(&request, &status);
                     MPI_Get_count(&status, MPI_CHAR, &recv_len);
                     omp_unset_lock(&requestlock);
-                    printf("pid %d thread %d received file %s, len %d \n", pid, threadn, file_name, recv_len);
+                    // printf("pid %d thread %d received file %s, len %d \n", pid, threadn, file_name, recv_len);
                     if (strcmp(file_name, empty_flag)==0) break;
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn], pid, threadn);
                 }
             }
             else{
                 int thread = threadn - nRM;
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+                printf("pid %d, thread id: %d \n", pid, threadn);
+                // printQueue(queues[thread]);
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread], pid, threadn);
             }
         }
     }
+
+    
     omp_destroy_lock(&requestlock);
     for (k=0; k<nRM; k++) {
         omp_destroy_lock(&queuelock[k]);
@@ -212,12 +217,15 @@ int main(int argc, char **argv)
     /*****************************************************************************************
      * Send/Receive [{word,count}] Array of Structs to/from other processes 
      *****************************************************************************************/
-
+    if (pid==3) {
+        printTable(sum_table);
+    }
     local_time = -omp_get_wtime();
     /*
     * add reduction - hashtable should be communicated amoung the
     * processes to come up with the final reduction
     */
+
     int h_space = HASH_CAPACITY / size;
     int h_start = h_space * pid;
     int h_end = h_space * (pid + 1);
@@ -239,7 +247,6 @@ int main(int argc, char **argv)
     MPI_Type_create_struct(nfields, blocklens, disps, types, &istruct);
     MPI_Type_commit(&istruct);
 
-    // ---
     for (k = 0; k < size; k++)
     {
         if (pid != k)
