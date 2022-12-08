@@ -152,12 +152,12 @@ int main(int argc, char **argv)
                     deQueue(file_name_queue);
                     omp_unset_lock(&requestlock);
                     printf("pid %d thread %d received file %s \n", pid, threadn, file_name);
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn], pid, threadn);    
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);    
                 }
             }
             else{
                 int thread = threadn - nRM;
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread], pid, threadn);
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
             }
         }
     }
@@ -176,14 +176,14 @@ int main(int argc, char **argv)
                     omp_unset_lock(&requestlock);
                     // printf("pid %d thread %d received file %s, len %d \n", pid, threadn, file_name, recv_len);
                     if (strcmp(file_name, empty_flag)==0) break;
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn], pid, threadn);
+                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
                 }
             }
             else{
                 int thread = threadn - nRM;
                 printf("pid %d, thread id: %d \n", pid, threadn);
                 // printQueue(queues[thread]);
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread], pid, threadn);
+                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
             }
         }
     }
@@ -235,8 +235,7 @@ int main(int argc, char **argv)
     // sent to 1st process likewise all data should be shared among the processes
 
     // --------- DEFINE THE STRUCT DATA TYPE TO SEND
-    const int nfields = 2;
-    MPI_Aint disps[nfields];
+    MPI_Aint disps[2];
     int blocklens[] = {WORD_MAX_LENGTH, 1};
     MPI_Datatype types[] = {MPI_CHAR, MPI_INT};
 
@@ -244,7 +243,7 @@ int main(int argc, char **argv)
     disps[1] = offsetof(pair, count);
 
     MPI_Datatype istruct;
-    MPI_Type_create_struct(nfields, blocklens, disps, types, &istruct);
+    MPI_Type_create_struct(2, blocklens, disps, types, &istruct);
     MPI_Type_commit(&istruct);
 
     for (k = 0; k < size; k++)
