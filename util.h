@@ -135,7 +135,8 @@ char *format_string(char *original)
     int len = strlen(original)+1;
     char *word = (char *)malloc(len * sizeof(char));
     int c = 0;
-    for (int i = 0; i < len; i++)
+    int i;
+    for (i = 0; i < len; i++)
     {
         if (isalnum(original[i]) || original[i] == '\'')
         {
