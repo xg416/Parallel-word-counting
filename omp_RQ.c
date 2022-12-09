@@ -127,7 +127,7 @@ int main(int argc, char *argv[]){
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
         for (i = 0; i < nRM; i++)
         {
-            populateRQ(reduceQueues[id_thread], tables[i], start, end, id_thread);
+            populateRQ(reduceQueues[id_thread], tables[i], start, end);
         }
         queueToHtWoL(reduceQueues[id_thread], reduceTables[id_thread]);
         free(reduceQueues[id_thread]);

@@ -113,18 +113,24 @@ uint64_t hashcode(const char* key) {
 
 item *ht_update(struct ht* table, char *key, int count)
 {
+    // char checkWord[] = "smart";
     struct item *my_item;
     int index = hashcode(key) % table->capacity;
     my_item = table->entries[index];
     /* Search for duplicate value */
     while (my_item != NULL)
     {
+        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
         index++;
-        if (strcmp(key, my_item->key) == 0)
+        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
+        if (strcmp(key, my_item->key) == 0){
             my_item->count += count;
-            // printf("key %s, index: %d, count: %d\n", key, index, my_item->count);
             return my_item;
+        }
+        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
+        if (index == table->capacity) index=0;
         my_item = table->entries[index];
+        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
     }
     /* Create new node if no duplicate is found */
     // my_item == NULL now

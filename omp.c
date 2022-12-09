@@ -85,7 +85,7 @@ int main(int argc, char *argv[]){
                 deQueue(file_name_queue);
                 omp_unset_lock(&filesQlock);
                 populateQueueDynamic(queueList[i], file_name, &linesQlocks[i]);
-            }     
+            }
         }
         else{
             //mapper threads

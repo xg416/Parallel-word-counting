@@ -52,7 +52,6 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
         strcpy(file_name, dirname);
         strcat(file_name, directory_seperator);
         strcat(file_name, in_file->d_name);
-        printf("Queuing file: %s\n", file_name);
         #pragma omp critical
         {
             // To be executed only by one thread at a time as there is a single queue
@@ -60,8 +59,7 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
             file_count++;
         }
     }
-
-        printf("Done Queuing all files\n\n");
+        printf("Done Queuing all %d files,\n\n", file_count);
     closedir(dir);
     return file_count;
 }
@@ -132,16 +130,24 @@ void ht_merge_remap(ht* tgt_table, ht* src_table, int start, int end)
  */
 char *format_string(char *original)
 {
-    int len = strlen(original)+1;
+    int len = strlen(original) + 1;
     char *word = (char *)malloc(len * sizeof(char));
     int c = 0;
     int i;
-    for (i = 0; i < len; i++)
-    {
-        if (isalnum(original[i]) || original[i] == '\'')
-        {
+    for (i = 0; i < len; i++){
+        if (i==0 && original[i] == '\''){
+            continue;
+        }
+        if (isalpha(original[i]) || original[i] == '\''){
             word[c] = tolower(original[i]);
             c++;
+        }
+        else if (isdigit(original[i])){
+            continue;
+        }
+        else{
+            word[c] = '\0';
+            return word;
         }
     }
     word[c] = '\0';
@@ -223,8 +229,7 @@ void populateHashMap(struct Queue *q, ht *hashMap)
         while ((token = strtok_r(rest, " ", &rest)))
         {
             char *word = format_string(token);
-            if (strlen(word) > 0)
-            {
+            if (strlen(word) > 0){
                 node = ht_update(hashMap, word, 1);
             }
             free(word);
@@ -245,7 +250,7 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
     
     while (q->front || !q->NoMoreNode)
     {
-        // this block should be locked ------------------------------------------------------------------------------//
+        // this block should be locked ----------------------------------------------//
         omp_set_lock(queuelock);
         if (q->front == NULL) {
             omp_unset_lock(queuelock);
@@ -261,12 +266,6 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
         char str[temp->len];
         strcpy(str, temp->line);
 
-        // separated out freeing part to save some time lost due to locking
-        if (temp != NULL) {
-            free(temp->line);
-            free(temp);
-        }
-
         char* token;
         char* rest = str;
         // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
@@ -280,11 +279,17 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
             }
             free(word);
         }
+        
+        // separated out freeing part to save some time 
+        if (temp != NULL) {
+            free(temp->line);
+            free(temp);
+        }
     }
 }
 
 
-void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //, omp_lock_t* htlock)
+void populateRQ(struct Queue *q, ht* src_table, int start, int end)
 {
     size_t len;
     int i;
@@ -313,6 +318,39 @@ void populateRQ(struct Queue *q, ht* src_table, int start, int end, int tid) //,
     q->NoMoreNode = 1;
 }
 
+void queueToHtWL(struct Queue *q, ht* hashMap, int start, int end, omp_lock_t* queuelock)
+{
+    struct item* node = NULL;
+    struct QNode* temp = NULL;
+    int count, hscode;
+    int qcount = 0;
+    int table_size = hashMap->capacity;
+    // wait until queue is good to start. Useful for parallel accesses.
+    // printf("pid tid: %d %d waiting queue \n", pid, tid);
+    while (q->front || !q->NoMoreNode){
+        if (q->front == NULL)
+            continue;
+        temp = q->front;
+        hscode = hashcode(temp->line) % table_size;
+        if (hscode>=start && hscode <end){
+            qcount++;
+            char *key = NULL;
+            key = strdup(temp->line);
+            count = (int) temp->len;
+        //     node = ht_update(hashMap, key, count);
+            omp_set_lock(queuelock);
+            q->front = q->front->next;
+            if (q->front == NULL) q->rear = NULL;
+            if (temp != NULL) {
+                free(temp->line);
+                free(temp);
+            }
+            omp_unset_lock(queuelock);
+            free(key);
+        }
+    }
+    if (q->front == NULL) {printf(" done with %d nodes !!! \n", qcount);}
+}
 
 void queueToHtWoL(struct Queue* q, ht* hashMap)
 {
