@@ -15,13 +15,6 @@ extern int DEBUG_MODE;
 
 #define FILE_NAME_BUF_SIZE 50
 
-void delay(int milli_seconds)
-{  
-    // Storing start time
-    clock_t start_time = clock();
-    // looping till required time is not achieved
-    while (clock() < start_time + milli_seconds);
-}
 
 int get_file_list(struct Queue *file_name_queue, char *dirpath)
 {
@@ -174,7 +167,6 @@ void populateQueue(struct Queue *q, char *file_name)
         enQueue(q, line, n+1);
         line_count++;
     }
-    // printf("line count %d, %s\n", line_count, file_name);
     fclose(filePtr);
     free(line);
 }
@@ -210,6 +202,7 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
     free(line);
 }
 
+
 void populateHashMap(struct Queue *q, ht *hashMap)
 {
     struct item* node = NULL;
@@ -243,11 +236,9 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
     struct item* node = NULL;
     struct QNode* temp = NULL;
     // wait until queue is good to start. Useful for parallel accesses.
-    // printf("pid tid: %d %d waiting queue \n", pid, tid);
     while (q == NULL)
         continue;
-    // if (q->front == NULL && !q->NoMoreNode) {printf("pid tid: %d %d: q->front is NULL \n", pid, tid);}
-    
+
     while (q->front || !q->NoMoreNode)
     {
         // this block should be locked ----------------------------------------------//
@@ -326,7 +317,6 @@ void queueToHtWL(struct Queue *q, ht* hashMap, int start, int end, omp_lock_t* q
     int qcount = 0;
     int table_size = hashMap->capacity;
     // wait until queue is good to start. Useful for parallel accesses.
-    // printf("pid tid: %d %d waiting queue \n", pid, tid);
     while (q->front || !q->NoMoreNode){
         if (q->front == NULL)
             continue;
@@ -358,10 +348,8 @@ void queueToHtWoL(struct Queue* q, ht* hashMap)
     struct QNode* temp = NULL;
     int count;
     // wait until queue is good to start. Useful for parallel accesses.
-    // printf("pid tid: %d %d waiting queue \n", pid, tid);
     while (q->front){
         temp = deQueueData(q);
-        // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
         // If front becomes NULL, then change rear also as NULL
         if (q->front == NULL) q->rear = NULL;
         char *word = NULL;

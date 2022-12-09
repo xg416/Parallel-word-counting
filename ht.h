@@ -100,16 +100,6 @@ uint64_t hashcode(const char* key) {
     return hash;
 }
 
-// uint64_t hashcode(const char *key)
-// {
-//     int i;
-//     uint64_t hash = 7;
-//     int length = strlen(key);
-
-//     for (i = 0; i < length; i++)
-//         hash = (hash * 31) + *(key + i);
-//     return hash & 0x7FFFFFFF; /* Make value positive */
-// }
 
 item *ht_update(struct ht* table, char *key, int count)
 {
@@ -120,20 +110,15 @@ item *ht_update(struct ht* table, char *key, int count)
     /* Search for duplicate value */
     while (my_item != NULL)
     {
-        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
         index++;
-        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
         if (strcmp(key, my_item->key) == 0){
             my_item->count += count;
             return my_item;
         }
-        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
         if (index == table->capacity) index=0;
         my_item = table->entries[index];
-        // if (strcmp(key, checkWord)==0) printf("index %d key %s, my_item->key is: %s\n", index, key, my_item->key);
     }
     /* Create new node if no duplicate is found */
-    // my_item == NULL now
     my_item = (item *)malloc(sizeof(struct item));
     // strcpy(my_item->key, key); can use this if we explicitly allocate memory: my_item->key = malloc(strlen(key)+1);
     // strdup function dynamically allocate memory on the heap. Need to free manually
@@ -160,7 +145,5 @@ void printTable(ht *table)
         }
     }
 }
-
-
 
 #endif // _HT_H
