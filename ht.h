@@ -16,7 +16,6 @@ struct item{
     char *key;
     int count;
 };
-
 typedef struct item item;
 
 struct ht
@@ -37,15 +36,6 @@ item *ht_update(struct ht* table, char *key, int count);
 
 // Free memory allocated for hash table, including allocated keys.
 void ht_destroy(ht* table);
-
-// Get item with given key (NUL-terminated) from hash table. Return
-// value (which was set with ht_set), or NULL if key not found.
-void* ht_get(ht* table, const char* key);
-
-// Move iterator to next item in hash table, update iterator's key
-// and value to current item, and return true. If there are no more
-// items, return false. Don't call ht_set during iteration.
-// bool ht_next(ht* it);
 
 // hash code 
 uint64_t hashcode(const char* key);

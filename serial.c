@@ -12,64 +12,54 @@
 #define HASH_CAPACITY 65536
 
 int main(int argc, char *argv[]){
-    int nThreads;
+    int nThreads = 1;
     char *files_dir;
-    nThreads = atoi(argv[1]); // first argument, number of thread
-    files_dir = argv[2];      // second argument, the folder of all input files
-    printf("input %s\n", files_dir);
-    int nRM = nThreads;     // # of readers and mappers
+    int nf_repeat;
+    files_dir = argv[1];      // the folder of all input files
+    nf_repeat = atoi(argv[2]); // second argument, number of thread
+    printf("Input files from %s\n", files_dir);
     int file_count = 0;
-    int i, k;                    // temp variable for loop
+    int i, k;                 // temp variable for loop
     double global_time = -omp_get_wtime();
     double local_time;
-    char csv_out[400] = "";
-    char tmp_out[200] = "";  // Buffer was small. sprintf caused a buffer overflow and modified the inputs. 
-    
-    ht **tables;
+
     ht *sum_table;
-    tables = (ht**)malloc(sizeof(struct ht*) * nRM);
     sum_table = ht_create(HASH_CAPACITY);
-    
-    omp_set_num_threads(nThreads);
     //create filesQueue
-    struct Queue* file_name_queue;
-    struct Queue* wordQueue;
-    file_name_queue = createQueue();
-    wordQueue = createQueue();
-    printf("\nQueuing files in Directory: %s\n", files_dir);
-    
+    struct Queue* filesQueue;
+    struct Queue* wordsQueue;
+    filesQueue = initQueue();
+    wordsQueue = initQueue(); 
     local_time = -omp_get_wtime();
-    int nfiles = get_file_list(file_name_queue, files_dir);
-    if (nfiles == -1) printf("Error!! Check input directory and rerun! Exiting!\n");
-    file_count += nfiles;
+    for (i = 0; i < nf_repeat; i++){
+        file_count += createFileQ(filesQueue, files_dir);
+    }
     local_time += omp_get_wtime();
-    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, nThreads, local_time);
-    strcat(csv_out, tmp_out);
-    printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
+    printf("Done loading %d files, time taken: %f\n", file_count, local_time);
 
     //Queueing content of the files
-    printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
-
     /********************** reader and mapper **********************************/
-    char file_name[FILE_NAME_BUF_SIZE * 3];
-    while (file_name_queue->front != NULL) {
-        printf("thread: %d, filename: %s\n", 0, file_name_queue->front->line);
-        strcpy(file_name, file_name_queue->front->line);
-        deQueue(file_name_queue);
-        populateQueue(wordQueue, file_name);
-    }     
-    populateHashMap(wordQueue, sum_table); 
-
+    char file_name[FILE_NAME_BUF_SIZE];
+    while (filesQueue->front != NULL) {
+        printf("thread: %d, filename: %s\n", 0, filesQueue->front->line);
+        strcpy(file_name, filesQueue->front->line);
+        removeQ(filesQueue);
+        populateQueue(wordsQueue, file_name);
+    } 
     local_time += omp_get_wtime();
-    sprintf(tmp_out, "%.4f, ", local_time);
-    strcat(csv_out, tmp_out);
-    printf("Done Populating lines! Time taken: %f\n", local_time);
+    printf("Reader: %f\n", local_time);
+    
+    local_time = -omp_get_wtime();
+    populateHashMap(wordsQueue, sum_table); 
+    local_time += omp_get_wtime();
+    printf("Mapper: %f\n", local_time);
 
     
     /********************** write file **********************************/
+    local_time = -omp_get_wtime();
     item* current;
-    char* filename = (char*)malloc(sizeof(char) * 32);
+    char* filename = (char*)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
     sprintf(filename, "../output/openmp/serial.txt");
     FILE* fp = fopen(filename, "w");
     for (i = 0; i < HASH_CAPACITY; i++){
@@ -79,9 +69,10 @@ int main(int argc, char *argv[]){
         fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
     }
     fclose(fp);
-
+    local_time += omp_get_wtime();
+    printf("Write: %f\n", local_time);
     freeHT(sum_table);
-    freeQueue(wordQueue);
+    freeQueue(wordsQueue);
     
     
     global_time += omp_get_wtime();

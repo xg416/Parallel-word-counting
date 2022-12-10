@@ -20,16 +20,16 @@ int main(int argc, char *argv[]){
     char *files_dir;
     nThreads = atoi(argv[1]); // first argument, number of thread
     files_dir = argv[2];      // second argument, the folder of all input files
-    printf("input %s\n", files_dir);
+    printf("Input files from %s\n", files_dir);
     int nReaders = nThreads/2;
     int nMappers = nThreads/2;
     int nReducers = nThreads/2;
     int file_count = 0;
+    int nf_repeat = 1;
+    int i;
     double global_time = -omp_get_wtime();
     double local_time;
-    char csv_out[400] = "";
-    char tmp_out[200] = "";  // Buffer was small. sprintf caused a buffer overflow and modified the inputs. 
-    
+
     ht **tables;
     ht *sum_table;
     tables = (ht**)malloc(sizeof(struct ht*) * nMappers);
@@ -40,26 +40,17 @@ int main(int argc, char *argv[]){
     omp_init_lock(&filesQlock);
 
     //create filesQueue
-    struct Queue* file_name_queue;
-    file_name_queue = createQueue();
+    struct Queue* filesQueue;
+    filesQueue = initQueue();
 
-    printf("\nQueuing files in Directory: %s\n", files_dir);
-    
     local_time = -omp_get_wtime();
-    int files = get_file_list(file_name_queue, files_dir);
-    if (files == -1)
-    {
-        printf("Error!! Check input directory and rerun! Exiting!\n");
+    for (i = 0; i < nf_repeat; i++){
+        file_count += createFileQ(filesQueue, files_dir);
     }
-    file_count += files;
     local_time += omp_get_wtime();
-
-    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, nThreads, local_time);
-    strcat(csv_out, tmp_out);
-    printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
+    printf("Done loading %d files, time taken: %f\n", file_count, local_time);
 
     //Queueing content of the files
-    printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
     struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nReaders);
     
@@ -68,33 +59,26 @@ int main(int argc, char *argv[]){
     #pragma omp parallel num_threads(nReaders)
     {
         int i = omp_get_thread_num();
-        queueList[i] = createQueue();
-        char file_name[FILE_NAME_BUF_SIZE * 3];
-        while (file_name_queue->front != NULL) {
+        queueList[i] = initQueue();
+        char file_name[FILE_NAME_BUF_SIZE ];
+        while (filesQueue->front != NULL) {
             omp_set_lock(&filesQlock);
-            if (file_name_queue->front == NULL) {
+            if (filesQueue->front == NULL) {
                 omp_unset_lock(&filesQlock);
                 continue;
             }
 
-            printf("thread: %d, filename: %s\n", i, file_name_queue->front->line);
-            strcpy(file_name, file_name_queue->front->line);
-            deQueue(file_name_queue);
+            printf("thread: %d, filename: %s\n", i, filesQueue->front->line);
+            strcpy(file_name, filesQueue->front->line);
+            removeQ(filesQueue);
             omp_unset_lock(&filesQlock);
             populateQueueWL_ML(queueList[i], file_name, &linesQlock);
         }
     }
     omp_destroy_lock(&filesQlock);
     local_time += omp_get_wtime();
-    sprintf(tmp_out, "%.4f, ", local_time);
-    strcat(csv_out, tmp_out);
     printf("Done Populating lines! Time taken: %f\n", local_time);
-    
-    //while (queue->front != NULL)//verification of the work queue
-    //{
-    //    printf("%s", queue->front->line);
-    //    queue->front = queue->front->next;
-    //}
+
 
     /************************* Mapper **********************************/
     #pragma omp parallel for shared(queueList, tables) num_threads(nMappers)
@@ -112,14 +96,12 @@ int main(int argc, char *argv[]){
         int start = id_thread * interval;
         int end = start + interval;
         int i;
-        // if (id_thread == 0){printTable(tables[0]);}
 
         if (end > HASH_CAPACITY) end = HASH_CAPACITY;
         for (i = 0; i < num_threads; i++)
         {
             ht_merge(sum_table, tables[i], start, end);
         }
-        // if (id_thread == 0){printTable(sum_table);}
     }
      
    
@@ -143,7 +125,6 @@ int main(int argc, char *argv[]){
            current = sum_table->entries[i];
            if (current == NULL)
                continue;
-        //    printf("i: %d, key: %s, count: %d\n", i, current->key, current->count); 
            fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
        }
        fclose(fp);

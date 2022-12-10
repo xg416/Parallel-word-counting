@@ -11,12 +11,11 @@
 #include "ht.h"
 
 extern int errno;
-extern int DEBUG_MODE;
 
-#define FILE_NAME_BUF_SIZE 50
+#define FILE_NAME_BUF_SIZE 64
 
 
-int get_file_list(struct Queue *file_name_queue, char *dirpath)
+int createFileQ(struct Queue *filesQueue, char *dirpath)
 {
     DIR *dir;
     struct dirent *in_file;
@@ -41,18 +40,16 @@ int get_file_list(struct Queue *file_name_queue, char *dirpath)
 
         /* Open directory entry file for common operation */
         // mallocing 3 times the directory buffer size for file_name
-        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE * 3);
+        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE );
         strcpy(file_name, dirname);
         strcat(file_name, directory_seperator);
         strcat(file_name, in_file->d_name);
         #pragma omp critical
         {
-            // To be executed only by one thread at a time as there is a single queue
-            enQueue(file_name_queue, file_name, strlen(file_name)+1);
+            insertQ(filesQueue, file_name, strlen(file_name)+1);
             file_count++;
         }
     }
-        printf("Done Queuing all %d files,\n\n", file_count);
     closedir(dir);
     return file_count;
 }
@@ -164,7 +161,7 @@ void populateQueue(struct Queue *q, char *file_name)
     ssize_t n;
     while ((n = getline(&line, &len, filePtr)) != -1)
     {
-        enQueue(q, line, n+1);
+        insertQ(q, line, n+1);
         line_count++;
     }
     fclose(filePtr);
@@ -192,7 +189,7 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
     {
         omp_set_lock(queuelock);
         temp_node = newNode(line, n+1);
-        enQueueData(q, temp_node);
+        insertNode(q, temp_node);
         line_count++;
         omp_unset_lock(queuelock);
     }
@@ -227,7 +224,7 @@ void populateHashMap(struct Queue *q, ht *hashMap)
             }
             free(word);
         }
-        deQueue(q);
+        removeQ(q);
     }
 }
 
@@ -298,7 +295,7 @@ void populateRQ(struct Queue *q, ht* src_table, int start, int end)
             hscode = hashcode(key) % table_size;
             if (hscode >= start && hscode < end){
                 len = (size_t) current->count;
-                enQueueHashKey(q, key, len); 
+                insertQHashKey(q, key, len); 
                 free(key);
             }
             else{
@@ -349,7 +346,7 @@ void queueToHtWoL(struct Queue* q, ht* hashMap)
     int count;
     // wait until queue is good to start. Useful for parallel accesses.
     while (q->front){
-        temp = deQueueData(q);
+        temp = removeNode(q);
         // If front becomes NULL, then change rear also as NULL
         if (q->front == NULL) q->rear = NULL;
         char *word = NULL;

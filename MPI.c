@@ -65,19 +65,14 @@ int main(int argc, char **argv)
     int file_count = 0;
     int done_sent_p_count = 0;
 
-    struct Queue *file_name_queue;
-    file_name_queue = createQueue();
+    struct Queue *filesQueue;
+    filesQueue = initQueue();
     struct Queue *local_file_queue;
     MPI_Barrier(MPI_COMM_WORLD);
     
-
     if (pid==0){
         for (i = 0; i < repeat_files; i++){
-            int files = get_file_list(file_name_queue, files_dir);
-            if (files == -1){
-                printf("Check input directory and rerun! Exiting!\n");
-                return 1;
-            }
+            int files = createFileQ(filesQueue, files_dir);
             file_count += files;
         }
     }
@@ -99,7 +94,7 @@ int main(int argc, char **argv)
     #pragma omp parallel for 
     for (k=0; k<nRM; k++) {
         omp_init_lock(&queuelock[k]);
-        queues[k] = createQueue();
+        queues[k] = initQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
     } 
     local_time += omp_get_wtime();
@@ -121,20 +116,20 @@ int main(int argc, char **argv)
         int recv_pid = 0;
         int nRM_tot = (size-1) * nRM;
         
-        #pragma omp parallel shared(queues, hash_tables, file_name_queue, requestlock, queuelock) num_threads(nthreads+1)
+        #pragma omp parallel shared(queues, hash_tables, filesQueue, requestlock, queuelock) num_threads(nthreads+1)
         {
             char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
             int threadn = omp_get_thread_num();
             if (threadn == nthreads){
-                while (file_name_queue->front != NULL){
+                while (filesQueue->front != NULL){
                     MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
-                    strcpy(send_file, file_name_queue->front->line);
-                    len = file_name_queue->front->len;
+                    strcpy(send_file, filesQueue->front->line);
+                    len = filesQueue->front->len;
                     MPI_Send(send_file, len + 1, MPI_CHAR, recv_pid, TAG_COMM_FILE_NAME, MPI_COMM_WORLD);
                     omp_set_lock(&requestlock);
-                    deQueue(file_name_queue);
+                    removeQ(filesQueue);
                     omp_unset_lock(&requestlock);
-                    if (file_name_queue->front == NULL) break;
+                    if (filesQueue->front == NULL) break;
                 }
                 while(nRM_tot){
                     send_file = empty_flag;
@@ -144,10 +139,10 @@ int main(int argc, char **argv)
                 }
             }
             else if(threadn < nRM){
-                while (file_name_queue->front != NULL){
+                while (filesQueue->front != NULL){
                     omp_set_lock(&requestlock);
-                    strcpy(file_name, file_name_queue->front->line);
-                    deQueue(file_name_queue);
+                    strcpy(file_name, filesQueue->front->line);
+                    removeQ(filesQueue);
                     omp_unset_lock(&requestlock);
                     // printf("pid %d thread %d received file %s \n", pid, threadn, file_name);
                     populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);    
@@ -212,7 +207,7 @@ int main(int argc, char **argv)
     struct Queue **reducerQueues = (struct Queue **)malloc(sizeof(struct Queue *) * size);
     #pragma omp parallel for
     for (k=0; k<size; k++) {
-        reducerQueues[k] = createQueue();
+        reducerQueues[k] = initQueue();
     } 
 
     #pragma omp parallel num_threads(nthreads)
@@ -239,7 +234,7 @@ int main(int argc, char **argv)
                     hscode = hashcode(key) % HASH_CAPACITY;
                     target_pid = hscode/size_per_node;
                     len = (size_t) current->count;
-                    enQueueHashKey(reducerQueues[target_pid], key, len); 
+                    insertQHashKey(reducerQueues[target_pid], key, len); 
                     free(key);
                 }
             }
@@ -259,7 +254,7 @@ int main(int argc, char **argv)
     #pragma omp parallel for
     for (k=0; k<nReduce; k++) {
         reduceTables[k] = ht_create(HASH_CAPACITY/size);
-        localRQ[k] = createQueue();
+        localRQ[k] = initQueue();
         omp_init_lock(&myqueuelocks[k]);
     }
     
@@ -284,7 +279,7 @@ int main(int argc, char **argv)
     // assign to thread
     q = reducerQueues[pid];
     while (q->front){
-        temp = deQueueData(q);
+        temp = removeNode(q);
         // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
         // If front becomes NULL, then change rear also as NULL
         if (q->front == NULL) q->rear = NULL;
@@ -293,7 +288,7 @@ int main(int argc, char **argv)
         len = temp->len;
         hscode = hashcode(key) % (HASH_CAPACITY/size);
         tgt_qid = hscode / interval;
-        enQueueHashKey(localRQ[tgt_qid], key, len); 
+        insertQHashKey(localRQ[tgt_qid], key, len); 
         free(key);
         transCount[pid]++;
         if (temp != NULL) {
@@ -354,7 +349,7 @@ int main(int argc, char **argv)
                     //assign to thread
                     hscode = hashcode(key) % (HASH_CAPACITY/size);
                     tgt_qid = hscode / interval;
-                    enQueueHashKey(localRQ[tgt_qid], key, len); 
+                    insertQHashKey(localRQ[tgt_qid], key, len); 
                     transCount[src_p]++;
                     free(key);
                 }

@@ -16,15 +16,14 @@ int main(int argc, char *argv[]){
     char *files_dir;
     nThreads = atoi(argv[1]); // first argument, number of thread
     files_dir = argv[2];      // second argument, the folder of all input files
-    printf("input %s\n", files_dir);
+    printf("Input files from %s\n", files_dir);
     int nRM = nThreads/2;     // # of readers and mappers
     int file_count = 0;
-    int k;                    // temp variable for loop
+    int i, k;                    // temp variable for loop
     double global_time = -omp_get_wtime();
     double local_time;
-    char csv_out[400] = "";
-    char tmp_out[200] = "";  // Buffer was small. sprintf caused a buffer overflow and modified the inputs. 
-    
+    int repeat_files = 1;
+
     ht **tables, **reduceTables;
     tables = (ht**)malloc(sizeof(struct ht*) * nRM);
     reduceTables = (ht**)malloc(sizeof(struct ht*) * nThreads);
@@ -34,21 +33,19 @@ int main(int argc, char *argv[]){
     omp_init_lock(&filesQlock);
 
     //create filesQueue
-    struct Queue* file_name_queue;
-    file_name_queue = createQueue();
+    struct Queue* filesQueue;
+    filesQueue = initQueue();
     printf("\nQueuing files in Directory: %s\n", files_dir);
     
     local_time = -omp_get_wtime();
-    int nfiles = get_file_list(file_name_queue, files_dir);
-    if (nfiles == -1) printf("Error!! Check input directory and rerun! Exiting!\n");
-    file_count += nfiles;
+    for (i = 0; i < repeat_files; i++){
+        int files = createFileQ(filesQueue, files_dir);
+        file_count += files;
+    }
     local_time += omp_get_wtime();
-    sprintf(tmp_out, "%d, %d, %d, %.4f, ", file_count, HASH_CAPACITY, nThreads, local_time);
-    strcat(csv_out, tmp_out);
-    printf("Done Queuing %d files! Time taken: %f\n", file_count, local_time);
+    printf("Done loading %d files, time taken: %f\n", file_count, local_time);
 
     //Queueing content of the files
-    printf("\nQueuing Lines by reading files in the FilesQueue\n");
     local_time = -omp_get_wtime();
     struct Queue **queueList = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
     
@@ -59,7 +56,7 @@ int main(int argc, char *argv[]){
         reduceTables[i] = ht_create(HASH_CAPACITY/nThreads);
         if (i<nRM){
             omp_init_lock(&linesQlocks[i]);
-            queueList[i] = createQueue();   
+            queueList[i] = initQueue();   
         }
         else{
             tables[i-nRM] = ht_create(HASH_CAPACITY);
@@ -72,17 +69,17 @@ int main(int argc, char *argv[]){
         int i = omp_get_thread_num();
         if (i < nRM){
             //reader threads
-            char file_name[FILE_NAME_BUF_SIZE * 3];
-            while (file_name_queue->front != NULL) {
+            char file_name[FILE_NAME_BUF_SIZE ];
+            while (filesQueue->front != NULL) {
                 omp_set_lock(&filesQlock);
-                if (file_name_queue->front == NULL) {
+                if (filesQueue->front == NULL) {
                     omp_unset_lock(&filesQlock);
                     continue;
                 }
 
-                printf("thread: %d, filename: %s\n", i, file_name_queue->front->line);
-                strcpy(file_name, file_name_queue->front->line);
-                deQueue(file_name_queue);
+                printf("thread: %d, filename: %s\n", i, filesQueue->front->line);
+                strcpy(file_name, filesQueue->front->line);
+                removeQ(filesQueue);
                 omp_unset_lock(&filesQlock);
                 populateQueueDynamic(queueList[i], file_name, &linesQlocks[i]);
             }
@@ -97,14 +94,12 @@ int main(int argc, char *argv[]){
         omp_destroy_lock(&linesQlocks[k]);
     }
     local_time += omp_get_wtime();
-    sprintf(tmp_out, "%.4f, ", local_time);
-    strcat(csv_out, tmp_out);
-    printf("Done Populating lines! Time taken: %f\n", local_time);
+    printf("Reader and mapper time taken: %f\n", local_time);
 
     /********************** reduction **********************************/
+    local_time = -omp_get_wtime();
     omp_lock_t reduceQlock;
     omp_init_lock(&reduceQlock);
-    local_time = -omp_get_wtime();
     #pragma omp parallel
     {
         int id_thread = omp_get_thread_num();
@@ -121,7 +116,6 @@ int main(int argc, char *argv[]){
         }
     }
     local_time += omp_get_wtime();
-    printf("time for reduction %f \n ", local_time);
     
     /********************** write file **********************************/
     #pragma omp parallel
@@ -144,6 +138,7 @@ int main(int argc, char *argv[]){
        fclose(fp);
        freeHT(reduceTables[id_thread]);
     }
+    printf("time for reduction and writing %f \n ", local_time);
     
     #pragma omp parallel for
     for (int k = 0; k < nRM; k++)
@@ -152,7 +147,6 @@ int main(int argc, char *argv[]){
         freeQueue(queueList[k]);
     }
     free(queueList);
-    
     
     global_time += omp_get_wtime();
     printf("total time taken for the execution: %f\n", global_time);

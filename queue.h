@@ -1,5 +1,5 @@
-// https://www.geeksforgeeks.org/queue-linked-list-implementation/
-// A C program to demonstrate linked list based implementation of queue
+// reference: https://www.digitalocean.com/community/tutorials/queue-in-c
+// reference: https://www.tutorialspoint.com/data_structures_algorithms/queue_program_in_c.htm
 
 #ifndef QUEUE_H_INCLUDED
 #define QUEUE_H_INCLUDED
@@ -23,26 +23,26 @@ struct Queue
 
 struct QNode *newNode(char *line, size_t len)
 {
-	struct QNode *temp = (struct QNode *)malloc(sizeof(struct QNode));
-	temp->line = (char *)malloc(len * sizeof(char));
-	strcpy(temp->line, line);
-	temp->len = len;
-	temp->next = NULL;
-	return temp;
+	struct QNode *current = (struct QNode *)malloc(sizeof(struct QNode));
+	current->line = (char *)malloc(len * sizeof(char));
+	strcpy(current->line, line);
+	current->len = len;
+	current->next = NULL;
+	return current;
 }
 
 struct QNode *newNodeHashKey(char *line, size_t count)
 {
-	struct QNode *temp = (struct QNode *)malloc(sizeof(struct QNode));
+	struct QNode *current = (struct QNode *)malloc(sizeof(struct QNode));
 	size_t len = strlen(line) + 1;
-	temp->line = (char *)malloc(len * sizeof(char));
-	strcpy(temp->line, line);
-	temp->len = count;
-	temp->next = NULL;
-	return temp;
+	current->line = (char *)malloc(len * sizeof(char));
+	strcpy(current->line, line);
+	current->len = count;
+	current->next = NULL;
+	return current;
 }
 
-struct Queue *createQueue()
+struct Queue *initQueue()
 {
 	struct Queue *q = (struct Queue *)malloc(sizeof(struct Queue));
 	q->front = q->rear = NULL;
@@ -50,11 +50,10 @@ struct Queue *createQueue()
 	return q;
 }
 
-void enQueueData(struct Queue *q, struct QNode *temp)
+void insertNode(struct Queue *q, struct QNode *temp)
 {
-	// If queue is empty, then new node is front and rear both
-	if (q->rear == NULL)
-	{
+	// If queue is empty
+	if (q->rear == NULL){
 		q->front = q->rear = temp;
 		return;
 	}
@@ -64,14 +63,14 @@ void enQueueData(struct Queue *q, struct QNode *temp)
 	q->rear = q->rear->next;
 }
 
-struct QNode *deQueueData(struct Queue *q)
+struct QNode *removeNode(struct Queue *q)
 {
 	// If queue is empty, return NULL.
 	if (q->front == NULL)
 		return NULL;
 
 	// Store previous front and move front one node ahead
-	struct QNode *temp = q->front;
+	struct QNode *current = q->front;
 
 	q->front = q->front->next;
 
@@ -79,57 +78,52 @@ struct QNode *deQueueData(struct Queue *q)
 	if (q->front == NULL)
 		q->rear = NULL;
 
-	return temp;
+	return current;
 }
 
-void enQueue(struct Queue *q, char *line, size_t len)
+void insertQ(struct Queue *q, char *line, size_t len)
 {
 	// Create a new LL node
-	struct QNode *temp = newNode(line, len);
-	enQueueData(q, temp);
+	struct QNode *current = newNode(line, len);
+	insertNode(q, current);
 }
 
-void enQueueHashKey(struct Queue *q, char *line, size_t len)
+void insertQHashKey(struct Queue *q, char *line, size_t len)
 {
 	// Create a new LL node
-	struct QNode *temp = newNodeHashKey(line, len);
-	enQueueData(q, temp);
+	struct QNode *current = newNodeHashKey(line, len);
+	insertNode(q, current);
 }
 
-void deQueue(struct Queue *q)
+void removeQ(struct Queue *q)
 {
-	struct QNode *temp = deQueueData(q);
-	if (temp == NULL) {
+	struct QNode *current = removeNode(q);
+	if (current == NULL) {
 		return;
 	}
-
-	free(temp->line);
-	free(temp);
+	free(current->line);
+	free(current);
 }
 
 void freeQueue(struct Queue *q)
 {
-	struct QNode *temp = deQueueData(q);
-	if (temp == NULL) {
-		return;
+	struct QNode *current = removeNode(q);
+	while (current != NULL){
+		free(current->line);
+		free(current);
+		current = removeNode(q);
 	}
-	else{
-		while (temp != NULL){
-			free(temp->line);
-			free(temp);
-			temp = deQueueData(q);
-		}
-	}
+	return;
 }
 
 void printQueue(struct Queue *q)
 {
-	struct QNode *temp;
+	struct QNode *current;
 	int count=0;
 	while(q->front){
-		temp = q->front;
-		char str[temp->len];
-		strcpy(str, temp->line);
+		current = q->front;
+		char str[current->len];
+		strcpy(str, current->line);
 		count++;
 		q->front = q->front->next;
 		printf("id %d, line: %s \n", count, str);

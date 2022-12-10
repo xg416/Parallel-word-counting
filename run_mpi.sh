@@ -1,3 +1,3 @@
 mpicc MPI2.c -o MPI -fopenmp
-mpirun ./MPI -n 1
+mpirun -n 4 ./MPI
 rm MPI
