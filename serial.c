@@ -55,7 +55,6 @@ int main(int argc, char *argv[]){
     local_time += omp_get_wtime();
     printf("Mapper: %f\n", local_time);
 
-    
     /********************** write file **********************************/
     local_time = -omp_get_wtime();
     item* current;
@@ -64,8 +63,9 @@ int main(int argc, char *argv[]){
     FILE* fp = fopen(filename, "w");
     for (i = 0; i < HASH_CAPACITY; i++){
         current = sum_table->entries[i];
-        if (current == NULL)
+        if (current == NULL){
             continue; 
+        }
         fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
     }
     fclose(fp);
@@ -74,9 +74,7 @@ int main(int argc, char *argv[]){
     freeHT(sum_table);
     freeQueue(wordsQueue);
     
-    
     global_time += omp_get_wtime();
     printf("total time taken for the execution: %f\n", global_time);
-    
     return EXIT_SUCCESS;
 }
