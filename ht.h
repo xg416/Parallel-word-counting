@@ -10,6 +10,7 @@
 
 #define FNV_OFFSET 14695981039346656037UL
 #define FNV_PRIME 1099511628211UL
+#define HASH_CAPACITY 65536
 
 // Item of hashtable is a chained list
 struct item{

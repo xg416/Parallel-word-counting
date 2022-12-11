@@ -8,9 +8,6 @@
 #include "util.h"
 #include "ht.h"
 
-
-#define HASH_CAPACITY 65536
-
 int main(int argc, char *argv[]){
     int nThreads = 1;
     char *files_dir;
@@ -20,8 +17,8 @@ int main(int argc, char *argv[]){
     printf("Input files from %s\n", files_dir);
     int file_count = 0;
     int i, k;                 // temp variable for loop
-    double global_time = -omp_get_wtime();
-    double local_time;
+    double total_time = -omp_get_wtime();
+    double temp_timer;
 
     ht *sum_table;
     sum_table = ht_create(HASH_CAPACITY);
@@ -30,35 +27,34 @@ int main(int argc, char *argv[]){
     struct Queue* wordsQueue;
     filesQueue = initQueue();
     wordsQueue = initQueue(); 
-    local_time = -omp_get_wtime();
+    temp_timer = -omp_get_wtime();
     for (i = 0; i < nf_repeat; i++){
         file_count += createFileQ(filesQueue, files_dir);
     }
-    local_time += omp_get_wtime();
-    printf("Done loading %d files, time taken: %f\n", file_count, local_time);
+    temp_timer += omp_get_wtime();
+    printf("Done loading %d files, time taken: %f\n", file_count, temp_timer);
 
     //Queueing content of the files
-    local_time = -omp_get_wtime();
+    temp_timer = -omp_get_wtime();
     /********************** reader and mapper **********************************/
-    char file_name[FILE_NAME_BUF_SIZE];
+    char file_name[FILE_NAME_MAX_LENGTH];
     while (filesQueue->front != NULL) {
-        printf("thread: %d, filename: %s\n", 0, filesQueue->front->line);
         strcpy(file_name, filesQueue->front->line);
         removeQ(filesQueue);
         populateQueue(wordsQueue, file_name);
     } 
-    local_time += omp_get_wtime();
-    printf("Reader: %f\n", local_time);
+    temp_timer += omp_get_wtime();
+    printf("Reader: %f\n", temp_timer);
     
-    local_time = -omp_get_wtime();
+    temp_timer = -omp_get_wtime();
     populateHashMap(wordsQueue, sum_table); 
-    local_time += omp_get_wtime();
-    printf("Mapper: %f\n", local_time);
+    temp_timer += omp_get_wtime();
+    printf("Mapper: %f\n", temp_timer);
 
     /********************** write file **********************************/
-    local_time = -omp_get_wtime();
+    temp_timer = -omp_get_wtime();
     item* current;
-    char* filename = (char*)malloc(sizeof(char) * FILE_NAME_BUF_SIZE);
+    char* filename = (char*)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
     sprintf(filename, "../output/openmp/serial.txt");
     FILE* fp = fopen(filename, "w");
     for (i = 0; i < HASH_CAPACITY; i++){
@@ -69,12 +65,12 @@ int main(int argc, char *argv[]){
         fprintf(fp, "key: %s, frequency: %d\n", current->key, current->count);
     }
     fclose(fp);
-    local_time += omp_get_wtime();
-    printf("Write: %f\n", local_time);
+    temp_timer += omp_get_wtime();
+    printf("Write: %f\n", temp_timer);
     freeHT(sum_table);
     freeQueue(wordsQueue);
     
-    global_time += omp_get_wtime();
-    printf("total time taken for the execution: %f\n", global_time);
+    total_time += omp_get_wtime();
+    printf("total time taken for the execution: %f\n", total_time);
     return EXIT_SUCCESS;
 }

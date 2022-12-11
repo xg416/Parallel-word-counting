@@ -16,40 +16,32 @@
 #define TAG_COMM_REQ_DATA 0
 #define TAG_COMM_FILE_NAME 1
 #define TAG_COMM_PAIR_LIST 3
-#define NUM_THREADS 4
 
 
 int main(int argc, char **argv)
 {
-    int provided;
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    if(provided < MPI_THREAD_FUNNELED)
-    {
-        fprintf(stderr, "Error: the threading support level: %d is lesser than that demanded: %d\n", MPI_THREAD_FUNNELED, provided);
-        MPI_Finalize();
-        return 0;
-    }
+    int nThreads, nReader, nMapper;
+    int nf_repeat;
+    char *files_dir;
+    nThreads = atoi(argv[1]);      // first argument, # of thread
+    nReader = atoi(argv[2]);       // second argument, # of reader thread  
+    files_dir = argv[3];           // 3rd argument, the folder of all input files
+    nf_repeat = atoi(argv[4]);     // 4th argument, repeat times of all files
 
     int size, pid, p_name_len;
     char p_name[MPI_MAX_PROCESSOR_NAME];
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
     MPI_Get_processor_name(p_name, &p_name_len);
-    int nthreads = NUM_THREADS;
-    int nRM = 2;
-    int nReduce = nthreads;
-    char files_dir[] = "../files";
-    int nf_repeat = 2;
+
+    int nMapper = nThreads - nReader;
+    int nReduce = nThreads;
     double total_time = -MPI_Wtime();
     double temp_timer = 0;
 
     int recv_pid;
     int i, j, k;
-
-    int count = 0;
-    int done = 0;
     int file_count = 0;
-    int done_sent_p_count = 0;
 
     struct Queue *filesQueue;
     filesQueue = initQueue();
@@ -58,8 +50,7 @@ int main(int argc, char **argv)
     
     if (pid==0){
         for (i = 0; i < nf_repeat; i++){
-            int files = createFileQ(filesQueue, files_dir);
-            file_count += files;
+            file_count += createFileQ(filesQueue, files_dir);
         }
     }
 
@@ -70,15 +61,15 @@ int main(int argc, char **argv)
     // reader and mapper setting
     omp_lock_t requestlock;
     omp_init_lock(&requestlock);
-    omp_lock_t queuelock[nRM];
+    omp_lock_t queuelock[nMapper];
     struct Queue **queues;
     struct ht **hash_tables;
-    queues = (struct Queue **)malloc(sizeof(struct Queue *) * nRM);
-    hash_tables = (struct ht **)malloc(sizeof(struct ht *) * nRM);
+    queues = (struct Queue **)malloc(sizeof(struct Queue *) * nMapper);
+    hash_tables = (ht **)malloc(sizeof(struct ht *) * nMapper);
     
     temp_timer = -omp_get_wtime();
     #pragma omp parallel for 
-    for (k=0; k<nRM; k++) {
+    for (k=0; k<nMapper; k++) {
         omp_init_lock(&queuelock[k]);
         queues[k] = initQueue();
         hash_tables[k] = ht_create(HASH_CAPACITY);
@@ -94,19 +85,22 @@ int main(int argc, char **argv)
     char empty_flag[] = "all done";
     double t1, t2; 
     t1 = MPI_Wtime();
+    
+    int queue_count = -1;
     // start allocating filenames then read & map
     if (pid == 0){
         char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
         char *send_file = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
         int len;
         int recv_pid = 0;
-        int nRM_tot = (size-1) * nRM;
+        int nReader_tot = (size-1) * nReader;
         
         #pragma omp parallel shared(queues, hash_tables, filesQueue, requestlock, queuelock) num_threads(nthreads+1)
         {
             char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
-            int threadn = omp_get_thread_num();
-            if (threadn == nthreads){
+            int tid = omp_get_thread_num();
+            int queue_id;
+            if (tid == nthreads){
                 while (filesQueue->front != NULL){
                     MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
                     omp_set_lock(&requestlock);
@@ -118,26 +112,27 @@ int main(int argc, char **argv)
                     omp_unset_lock(&requestlock);
                     if (filesQueue->front == NULL) break;
                 }
-                while(nRM_tot){
+                while(nReader_tot){
                     send_file = empty_flag;
                     MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
                     MPI_Send(send_file, len + 1, MPI_CHAR, recv_pid, TAG_COMM_FILE_NAME, MPI_COMM_WORLD);
-                    nRM_tot--;
+                    nReader_tot--;
                 }
             }
-            else if(threadn < nRM){
+            else if(tid < nReader){
                 while (filesQueue->front != NULL){
                     omp_set_lock(&requestlock);
+                    queue_count++;
                     strcpy(file_name, filesQueue->front->line);
                     removeQ(filesQueue);
                     omp_unset_lock(&requestlock);
-                    // printf("pid %d thread %d received file %s \n", pid, threadn, file_name);
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);    
+                    queue_id = queue_count % nMapper;
+                    populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);    
                 }
             }
             else{
-                int thread = threadn - nRM;
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+                queue_id = tid - nReader;
+                populateHashMapWL(queues[queue_id], hash_tables[queue_id], &queuelock[queue_id]);
             }
         }
     }
@@ -145,8 +140,9 @@ int main(int argc, char **argv)
         #pragma omp parallel shared(queues, hash_tables, requestlock, queuelock) num_threads(nthreads)
         {
             char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
-            int threadn = omp_get_thread_num();
-            if (threadn < nRM) {
+            int tid = omp_get_thread_num();
+            int queue_id;
+            if (tid < nReader) {
                 while (strcmp(file_name, empty_flag)!=0){
                     omp_set_lock(&requestlock);
                     MPI_Send(&pid, 1, MPI_INT, 0, TAG_COMM_REQ_DATA, MPI_COMM_WORLD);
@@ -154,22 +150,22 @@ int main(int argc, char **argv)
                     // MPI_Wait(&request, &status);
                     MPI_Get_count(&status, MPI_CHAR, &recv_len);
                     omp_unset_lock(&requestlock);
-                    // printf("pid %d thread %d received file %s, len %d \n", pid, threadn, file_name, recv_len);
+                    // printf("pid %d thread %d received file %s, len %d \n", pid, tid, file_name, recv_len);
                     if (strcmp(file_name, empty_flag)==0) break;
-                    populateQueueDynamic(queues[threadn], file_name, &queuelock[threadn]);
+                    queue_id = queue_count % nMapper;
+                    populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);  
                 }
             }
             else{
-                int thread = threadn - nRM;
-                // printQueue(queues[thread]);
-                populateHashMapWL(queues[thread], hash_tables[thread], &queuelock[thread]);
+                queue_id = tid - nReader;
+                populateHashMapWL(queues[queue_id], hash_tables[queue_id], &queuelock[queue_id]);
             }
         }
     }
 
     
     omp_destroy_lock(&requestlock);
-    for (k=0; k<nRM; k++) {
+    for (k=0; k<nMapper; k++) {
         omp_destroy_lock(&queuelock[k]);
         freeQueue(queues[k]);
     }
@@ -210,7 +206,7 @@ int main(int argc, char **argv)
         if (end>HASH_CAPACITY) end=HASH_CAPACITY;
         item* current;
         
-        for (j = 0; j < nRM; j++){
+        for (j = 0; j < nMapper; j++){
             for (i = start; i < end; i++){
                 current = hash_tables[j]->entries[i];
                 if (current == NULL)
@@ -229,7 +225,7 @@ int main(int argc, char **argv)
     }
     
     #pragma omp parallel for 
-    for (k=0; k<nRM; k++) {
+    for (k=0; k<nMapper; k++) {
         freeHT(hash_tables[k]);
     } 
     free(hash_tables);
@@ -250,7 +246,7 @@ int main(int argc, char **argv)
     struct Queue* q = NULL;
     size_t len;
     int recv_j = 0;
-    int comm_size = 128;
+    int comm_size = 1024;
     int interval = HASH_CAPACITY / size / nthreads;
     int remain = 2*(size-1);
     int hscode, tgt_qid;

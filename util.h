@@ -12,15 +12,21 @@
 
 extern int errno;
 
-#define FILE_NAME_BUF_SIZE 64
+#define FILE_NAME_MAX_LENGTH 64
+#define WORD_MAX_LENGTH 32
 
+typedef struct
+{
+    char word[WORD_MAX_LENGTH];
+    int count;
+} pair;
 
 int createFileQ(struct Queue *filesQueue, char *dirpath)
 {
     DIR *dir;
     struct dirent *in_file;
 
-    char dirname[FILE_NAME_BUF_SIZE];
+    char dirname[FILE_NAME_MAX_LENGTH];
     // Assuming Linux only. Null character needs to be added to avoid garbage
     char directory_seperator[2] = "/\0";
     strcpy(dirname, dirpath);
@@ -40,7 +46,7 @@ int createFileQ(struct Queue *filesQueue, char *dirpath)
 
         /* Open directory entry file for common operation */
         // mallocing 3 times the directory buffer size for file_name
-        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_BUF_SIZE );
+        char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH );
         strcpy(file_name, dirname);
         strcat(file_name, directory_seperator);
         strcat(file_name, in_file->d_name);
@@ -148,8 +154,7 @@ void populateQueue(struct Queue *q, char *file_name)
 {
     // file open operation
     FILE *filePtr;
-    if ((filePtr = fopen(file_name, "r")) == NULL)
-    {
+    if ((filePtr = fopen(file_name, "r")) == NULL){
         fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -159,8 +164,7 @@ void populateQueue(struct Queue *q, char *file_name)
     char *line = NULL;
     int line_count = 0;
     ssize_t n;
-    while ((n = getline(&line, &len, filePtr)) != -1)
-    {
+    while ((n = getline(&line, &len, filePtr)) != -1){
         insertQ(q, line, n+1);
         line_count++;
     }
