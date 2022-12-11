@@ -121,24 +121,24 @@ void ht_merge_remap(ht* tgt_table, ht* src_table, int start, int end)
         }
     }
 }
-/**
- * Format string with only lower case alphabetic letters
- */
-char *stringClean(char *original)
+
+
+/*clean up the string to remove non-alpha chars and numbers.*/
+char *stringClean(char *input)
 {
-    int len = strlen(original) + 1;
+    int len = strlen(input) + 1;
     char *word = (char *)malloc(len * sizeof(char));
     int c = 0;
     int i;
     for (i = 0; i < len; i++){
-        if (i==0 && original[i] == '\''){
+        if (i==0 && input[i] == '\''){
             continue;
         }
-        if (isalpha(original[i]) || original[i] == '\''){
-            word[c] = tolower(original[i]);
+        if (isalpha(input[i]) || input[i] == '\''){
+            word[c] = tolower(input[i]);
             c++;
         }
-        else if (isdigit(original[i])){
+        else if (isdigit(input[i])){
             continue;
         }
         else{
@@ -177,8 +177,7 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
 {
     // file open operation
     FILE *filePtr;
-    if ((filePtr = fopen(file_name, "r")) == NULL)
-    {
+    if ((filePtr = fopen(file_name, "r")) == NULL){
         fprintf(stderr, "could not open file: [%p], err: %d, %s\n", filePtr, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -197,7 +196,6 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
         line_count++;
         omp_unset_lock(queuelock);
     }
-    // printf("pid, tid: %d %d, line count %d, %s\n", pid, tid, line_count, file_name);
     fclose(filePtr);
     q->NoMoreNode = 1;
     free(line);
@@ -219,7 +217,6 @@ void populateHashMap(struct Queue *q, ht *hashMap)
         strcpy(str, q->front->line);
         char *token;
         char *rest = str;
-        // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
         while ((token = strtok_r(rest, " ", &rest)))
         {
             char *word = stringClean(token);
