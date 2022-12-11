@@ -124,7 +124,7 @@ void ht_merge_remap(ht* tgt_table, ht* src_table, int start, int end)
 /**
  * Format string with only lower case alphabetic letters
  */
-char *format_string(char *original)
+char *stringClean(char *original)
 {
     int len = strlen(original) + 1;
     char *word = (char *)malloc(len * sizeof(char));
@@ -222,7 +222,7 @@ void populateHashMap(struct Queue *q, ht *hashMap)
         // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
         while ((token = strtok_r(rest, " ", &rest)))
         {
-            char *word = format_string(token);
+            char *word = stringClean(token);
             if (strlen(word) > 0){
                 node = ht_update(hashMap, word, 1);
             }
@@ -263,7 +263,7 @@ void populateHashMapWL(struct Queue* q, struct ht* hashMap, omp_lock_t* queueloc
         // https://www.geeksforgeeks.org/strtok-strtok_r-functions-c-examples/
         while ((token = strtok_r(rest, " ", &rest)))
         {
-            char* word = format_string(token);
+            char* word = stringClean(token);
             if (strlen(word) > 0)
             {
                 // printf("word %s \n", word);
