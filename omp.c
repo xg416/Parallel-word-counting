@@ -62,10 +62,11 @@ int main(int argc, char *argv[]){
     temp_timer = -omp_get_wtime();
     /********************** reader and mapper **********************************/
     int queue_count = -1;
-    #pragma omp parallel num_threads(nThreads)
+    #pragma omp parallel shared(queue_count, filesQueue, queueList, linesQlocks) num_threads(nThreads)
     {
         int tid = omp_get_thread_num();
-        // double thread_timer = -omp_get_wtime();
+        int i;
+        double thread_timer = -omp_get_wtime();
         if (tid < nReader){
             //reader threads
             char file_name[FILE_NAME_MAX_LENGTH];
@@ -83,16 +84,19 @@ int main(int argc, char *argv[]){
                 queue_id = queue_count % nMapper;
                 populateQueueDynamic(queueList[queue_id], file_name, &linesQlocks[queue_id]);
             }
-            // thread_timer += omp_get_wtime();
-            // printf("Reader thread %d takes time %f \n ", tid, thread_timer);
+            for (i = 0; i< nMapper; i++){
+                queueList[i]->NoMoreNode = 1;
+            }
+            thread_timer += omp_get_wtime();
+            printf("Reader thread %d takes time %f \n ", tid, thread_timer);
         }
         else{
             //mapper threads
             int queue_id = tid-nReader;
             populateHashMapWL(queueList[queue_id], tables[queue_id], &linesQlocks[queue_id]); 
             freeQueue(queueList[queue_id]);
-            // thread_timer += omp_get_wtime();
-            // printf("Mapper thread %d takes time %f \n ", tid, thread_timer);
+            thread_timer += omp_get_wtime();
+            printf("Mapper thread %d takes time %f \n ", tid, thread_timer);
         }
     }
     omp_destroy_lock(&filesQlock);

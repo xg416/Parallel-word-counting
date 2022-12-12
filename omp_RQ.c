@@ -84,6 +84,9 @@ int main(int argc, char *argv[]){
                 queue_id = queue_count % nMapper;
                 populateQueueDynamic(queueList[queue_id], file_name, &linesQlocks[queue_id]);
             }
+            for (i = 0; i< nMapper; i++){
+                queueList[i]->NoMoreNode = 1;
+            }
             // thread_timer += omp_get_wtime();
             // printf("Reader thread %d takes time %f \n ", tid, thread_timer);
         }

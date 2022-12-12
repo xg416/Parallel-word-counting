@@ -188,8 +188,7 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
     char *line = NULL;
     int line_count = 0;
     struct QNode *temp_node;
-    while ((n = getline(&line, &len, filePtr)) != -1)
-    {
+    while ((n = getline(&line, &len, filePtr)) != -1){
         omp_set_lock(queuelock);
         temp_node = newNode(line, n+1);
         insertNode(q, temp_node);
@@ -197,7 +196,6 @@ void populateQueueDynamic(struct Queue *q, char *file_name, omp_lock_t *queueloc
         omp_unset_lock(queuelock);
     }
     fclose(filePtr);
-    q->NoMoreNode = 1;
     free(line);
 }
 

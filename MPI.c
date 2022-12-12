@@ -138,7 +138,10 @@ int main(int argc, char **argv)
                     omp_unset_lock(&requestlock);
                     queue_id = queue_count % nMapper;
                     // printf("pid %d tid %d get file %s \n", pid, tid, file_name);
-                    populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);    
+                    populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]); 
+                }
+                for (i = 0; i< nMapper; i++){
+                    queues[i]->NoMoreNode = 1;
                 }
             }
             else{
@@ -166,6 +169,9 @@ int main(int argc, char **argv)
                     // printf("pid %d tid %d get file %s \n", pid, tid, file_name);
                     queue_id = queue_count % nMapper;
                     populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);  
+                }
+                for (i = 0; i< nMapper; i++){
+                    queues[i]->NoMoreNode = 1;
                 }
             }
             else{
@@ -226,7 +232,8 @@ int main(int argc, char **argv)
             }
         }
     }
-    
+    t2 = MPI_Wtime(); 
+    printf("PID %d takes time %f before sending data to reduction \n", pid, t2 - t1); 
     MPI_Barrier(MPI_COMM_WORLD);
     #pragma omp parallel for 
     for (k=0; k<nMapper; k++) {
