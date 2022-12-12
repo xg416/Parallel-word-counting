@@ -90,6 +90,7 @@ int main(int argc, char *argv[]){
             //mapper threads
             int queue_id = tid-nReader;
             populateHashMapWL(queueList[queue_id], tables[queue_id], &linesQlocks[queue_id]); 
+            freeQueue(queueList[queue_id]);
             // thread_timer += omp_get_wtime();
             // printf("Mapper thread %d takes time %f \n ", tid, thread_timer);
         }
@@ -149,7 +150,6 @@ int main(int argc, char *argv[]){
     for (k = 0; k < nMapper; k++)
     {
         freeHT(tables[k]);
-        freeQueue(queueList[k]);
     }
     free(queueList);
     

@@ -16,10 +16,18 @@
 #define TAG_COMM_REQ_DATA 0
 #define TAG_COMM_FILE_NAME 1
 #define TAG_COMM_PAIR_LIST 3
-
+#define PAIR_CAPACITY 1024
 
 int main(int argc, char **argv)
 {
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    if(provided < MPI_THREAD_FUNNELED)
+    {
+        fprintf(stderr, "Error: the threading support level: %d is lesser than that demanded: %d\n", MPI_THREAD_FUNNELED, provided);
+        MPI_Finalize();
+        return 0;
+    }
     int nThreads, nReader, nMapper;
     int nf_repeat;
     char *files_dir;
@@ -33,8 +41,9 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
     MPI_Get_processor_name(p_name, &p_name_len);
-
-    int nMapper = nThreads - nReader;
+    
+    if (pid==0) printf("Number of thread: %d, reader%d, file from %s, repeat files %d \n", nThreads, nReader, files_dir, nf_repeat); 
+    nMapper = nThreads - nReader;
     int nReduce = nThreads;
     double total_time = -MPI_Wtime();
     double temp_timer = 0;
@@ -75,7 +84,7 @@ int main(int argc, char **argv)
         hash_tables[k] = ht_create(HASH_CAPACITY);
     } 
     temp_timer += omp_get_wtime();
-    if (pid==0) printf("initialization takes time %f\n", temp_timer); 
+    printf("pid %d initialization takes time %f\n", pid, temp_timer); 
     MPI_Barrier(MPI_COMM_WORLD);
     
     // cross node filename allocation setting
@@ -94,13 +103,13 @@ int main(int argc, char **argv)
         int len;
         int recv_pid = 0;
         int nReader_tot = (size-1) * nReader;
-        
-        #pragma omp parallel shared(queues, hash_tables, filesQueue, requestlock, queuelock) num_threads(nthreads+1)
+        #pragma omp parallel shared(queues, hash_tables, filesQueue, requestlock, queuelock) num_threads(nThreads+1)
         {
             char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
             int tid = omp_get_thread_num();
             int queue_id;
-            if (tid == nthreads){
+            int counttt = 0;
+            if (tid == nThreads){
                 while (filesQueue->front != NULL){
                     MPI_Recv(&recv_pid, 1, MPI_INT, MPI_ANY_SOURCE, TAG_COMM_REQ_DATA, MPI_COMM_WORLD, &status);
                     omp_set_lock(&requestlock);
@@ -110,6 +119,7 @@ int main(int argc, char **argv)
                     // omp_set_lock(&requestlock);
                     removeQ(filesQueue);
                     omp_unset_lock(&requestlock);
+                    counttt++;
                     if (filesQueue->front == NULL) break;
                 }
                 while(nReader_tot){
@@ -127,17 +137,19 @@ int main(int argc, char **argv)
                     removeQ(filesQueue);
                     omp_unset_lock(&requestlock);
                     queue_id = queue_count % nMapper;
+                    // printf("pid %d tid %d get file %s \n", pid, tid, file_name);
                     populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);    
                 }
             }
             else{
                 queue_id = tid - nReader;
                 populateHashMapWL(queues[queue_id], hash_tables[queue_id], &queuelock[queue_id]);
+                // printf("pid %d tid %d items in the table: %d \n", pid, tid, hash_tables[queue_id]->itemcount);
             }
         }
     }
     else{   
-        #pragma omp parallel shared(queues, hash_tables, requestlock, queuelock) num_threads(nthreads)
+        #pragma omp parallel shared(queues, hash_tables, requestlock, queuelock) num_threads(nThreads)
         {
             char *file_name = (char *)malloc(sizeof(char) * FILE_NAME_MAX_LENGTH);
             int tid = omp_get_thread_num();
@@ -145,13 +157,13 @@ int main(int argc, char **argv)
             if (tid < nReader) {
                 while (strcmp(file_name, empty_flag)!=0){
                     omp_set_lock(&requestlock);
+                    queue_count++;
                     MPI_Send(&pid, 1, MPI_INT, 0, TAG_COMM_REQ_DATA, MPI_COMM_WORLD);
                     MPI_Recv(file_name, FILE_NAME_MAX_LENGTH, MPI_CHAR, 0, TAG_COMM_FILE_NAME, MPI_COMM_WORLD, &status);
-                    // MPI_Wait(&request, &status);
                     MPI_Get_count(&status, MPI_CHAR, &recv_len);
                     omp_unset_lock(&requestlock);
-                    // printf("pid %d thread %d received file %s, len %d \n", pid, tid, file_name, recv_len);
                     if (strcmp(file_name, empty_flag)==0) break;
+                    // printf("pid %d tid %d get file %s \n", pid, tid, file_name);
                     queue_id = queue_count % nMapper;
                     populateQueueDynamic(queues[queue_id], file_name, &queuelock[queue_id]);  
                 }
@@ -159,11 +171,12 @@ int main(int argc, char **argv)
             else{
                 queue_id = tid - nReader;
                 populateHashMapWL(queues[queue_id], hash_tables[queue_id], &queuelock[queue_id]);
+                // printf("pid %d tid %d items in the table %d\n", pid, tid, hash_tables[queue_id]->itemcount);
             }
+            free(file_name);
         }
     }
 
-    
     omp_destroy_lock(&requestlock);
     for (k=0; k<nMapper; k++) {
         omp_destroy_lock(&queuelock[k]);
@@ -175,16 +188,6 @@ int main(int argc, char **argv)
     if (pid==0) printf("file processing and mapping time is %f\n", t2 - t1); 
     
     // --------- DEFINE THE STRUCT DATA TYPE TO SEND
-    MPI_Aint disps[2];
-    int blocklens[] = {WORD_MAX_LENGTH, 1};
-    MPI_Datatype types[] = {MPI_CHAR, MPI_INT};
-
-    disps[0] = offsetof(pair, word);
-    disps[1] = offsetof(pair, count);
-    MPI_Datatype istruct;
-    MPI_Type_create_struct(2, blocklens, disps, types, &istruct);
-    MPI_Type_commit(&istruct);
-    
     // assign to nodes
     struct Queue **reducerQueues = (struct Queue **)malloc(sizeof(struct Queue *) * size);
     #pragma omp parallel for
@@ -193,10 +196,10 @@ int main(int argc, char **argv)
     } 
     
     temp_timer = -MPI_Wtime();
-    #pragma omp parallel num_threads(nthreads)
+    #pragma omp parallel num_threads(nThreads)
     {   
         int tid = omp_get_thread_num();
-        int interval = HASH_CAPACITY / nthreads;
+        int interval = HASH_CAPACITY / nThreads;
         int start = interval * tid;
         int end = interval * (tid+1);
         int i, j;
@@ -224,6 +227,7 @@ int main(int argc, char **argv)
         }
     }
     
+    MPI_Barrier(MPI_COMM_WORLD);
     #pragma omp parallel for 
     for (k=0; k<nMapper; k++) {
         freeHT(hash_tables[k]);
@@ -231,6 +235,16 @@ int main(int argc, char **argv)
     free(hash_tables);
     
     // assign to nodes
+    MPI_Aint disps[2];
+    int blocklens[] = {WORD_MAX_LENGTH, 1};
+    MPI_Datatype types[] = {MPI_CHAR, MPI_INT};
+
+    disps[0] = offsetof(pair, word);
+    disps[1] = offsetof(pair, count);
+    MPI_Datatype Tuple;
+    MPI_Type_create_struct(2, blocklens, disps, types, &Tuple);
+    MPI_Type_commit(&Tuple);
+    
     struct ht **reduceTables = (struct ht **)malloc(sizeof(struct ht *) * nReduce);
     struct Queue **localRQ = (struct Queue **)malloc(sizeof(struct Queue *) * nReduce);
     omp_lock_t myqueuelocks[nReduce];
@@ -241,114 +255,107 @@ int main(int argc, char **argv)
         omp_init_lock(&myqueuelocks[k]);
     }
     
-    int src_p, tgt_p, nsend;  // send from k to next, recv from prev
+    int nsend, id_pair, n_recv_pair;  // send from k to next, recv from prev
     struct QNode* temp = NULL;
     struct Queue* q = NULL;
     size_t len;
     int recv_j = 0;
-    int comm_size = 1024;
-    int interval = HASH_CAPACITY / size / nthreads;
-    int remain = 2*(size-1);
-    int hscode, tgt_qid;
+    int comm_size = PAIR_CAPACITY;
+    int interval = HASH_CAPACITY / size / nThreads;
+    int remain = size * 2;
+    int hscode, tgt_tid;
     // int remain_recv = size-1;
+    int recv_count[size];
+    int send_count[size];
+    int recv_disp[size];
+    int send_disp[size];
     int doneRecv[size];
     int doneSend[size];
-    int transCount[size];
     for (i=0; i<size; i++){
+        recv_count[i] = 0;
+        send_count[i] = 0;
+        recv_disp[i] = 0;
+        send_disp[i] = 0;
         doneRecv[i] = 0;
-        doneSend[i] = 0;
-        transCount[i] = 0;
+        doneSend[i] = 0; 
     }
-    // assign to thread
-    q = reducerQueues[pid];
-    while (q->front){
-        temp = removeNode(q);
-        // printf("pid tid: %d %d temp: %s \n", pid, tid, temp->line);
-        // If front becomes NULL, then change rear also as NULL
-        if (q->front == NULL) q->rear = NULL;
-        char *key = NULL;
-        key = strdup(temp->line);
-        len = temp->len;
-        hscode = hashcode(key) % (HASH_CAPACITY/size);
-        tgt_qid = hscode / interval;
-        insertQHashKey(localRQ[tgt_qid], key, len); 
-        free(key);
-        transCount[pid]++;
-        if (temp != NULL) {
-            free(temp->line);
-            free(temp);
-        }
-    }
+    
     // communication via pair format
+    MPI_Barrier(MPI_COMM_WORLD);
     while(remain > 0){
-        for (k = 1; k < size; k++) {
-            // start send
-            tgt_p = (pid + k) % size; // don't send to self
-            src_p = (size + pid - k) % size;
-            if (!doneSend[tgt_p]){
-                nsend = 0;
-                q = reducerQueues[tgt_p];
-                // to alleviate pressure of communication, send and recv once with all other processes
-                pair pairs[comm_size];
-                while (q && q->front){
-                    // can send
-                    temp = q->front;
-                    q->front = q->front->next;
-                    pairs[nsend].count = (int) temp->len;
-                    strcpy(pairs[nsend].word, temp->line);
-                    if (q->front == NULL) q->rear = NULL;
-                    nsend++;
-                    if (temp != NULL) {
-                        free(temp->line);
-                        free(temp);
-                    }
-                    if (nsend == comm_size) break;
+        id_pair = 0;
+        pair sendbuf[comm_size*size];
+        pair recvbuf[comm_size*size];
+        for (k = 0; k < size; k++) {
+            q = reducerQueues[k];
+            nsend = 0;
+            while (q->front && !doneSend[k]){
+                // can send
+                temp = q->front;
+                q->front = q->front->next;
+                sendbuf[id_pair].count = (int) temp->len;
+                strcpy(sendbuf[id_pair].word, temp->line);
+                if (q->front == NULL) q->rear = NULL;
+                id_pair++;
+                nsend++;
+                if (temp != NULL) {
+                    free(temp->line);
+                    free(temp);
                 }
-                if (q->front==NULL && nsend<comm_size){
-                    strcpy(pairs[nsend].word, empty_flag);
-                    pairs[nsend].count = 1;
-                    nsend++;
+                if (nsend == comm_size) break;
+            }
+            if ((q==NULL || q->front==NULL) && nsend<comm_size){
+                strcpy(sendbuf[id_pair].word, empty_flag);
+                sendbuf[id_pair].count = 1;
+                if (doneSend[k]==0){
                     remain--;
-                    doneSend[tgt_p] = 1;
+                    doneSend[k] = 1;
                 }
-                MPI_Isend(pairs, nsend, istruct, tgt_p, TAG_COMM_PAIR_LIST, MPI_COMM_WORLD, &request);
+                nsend++;
+                id_pair++;
             }
-            if (!doneRecv[src_p]){
-                // start recv
-                pair recv_pairs[comm_size];
-                MPI_Recv(recv_pairs, comm_size, istruct, src_p, TAG_COMM_PAIR_LIST, MPI_COMM_WORLD, &status);
-                MPI_Get_count(&status, istruct, &recv_j); 
-                for (i = 0; i < recv_j; i++) {
-                    char *key = NULL;
-                    pair recv_pair = recv_pairs[i];
-                    len = (size_t) recv_pair.count;
-                    key = strdup(recv_pair.word);
-                    if (strcmp(key, empty_flag)==0){
-                        doneRecv[src_p] = 1;
+            send_count[k] = nsend;
+            if (k < size-1) {send_disp[k+1] = id_pair;}
+        }
+        // printf("pid %d, doneSend: %d %d %d  %d \n", pid, doneSend[0], doneSend[1], doneSend[2], doneSend[3]);
+        
+        MPI_Alltoall(send_count, 1, MPI_INT, recv_count, 1, MPI_INT, MPI_COMM_WORLD);
+        for (k = 1; k < size; k++) {
+            recv_disp[k] = recv_count[k-1] + recv_disp[k-1];
+        }
+        n_recv_pair = recv_disp[size-1] + recv_count[size-1];
+        // printf("pid %d, send_count: %d %d %d  %d \n", pid, send_count[0], send_count[1], send_count[2], send_count[3]);
+        // printf("pid %d, recv_disp: %d %d %d  %d \n", pid, recv_disp[0], recv_disp[1], recv_disp[2], recv_disp[3]);
+        MPI_Alltoallv(sendbuf, send_count, send_disp, Tuple, recvbuf, recv_count, recv_disp, Tuple, MPI_COMM_WORLD);
+        // printf("pid %d, recv_count: %d %d %d  %d \n", pid, recv_count[0], recv_count[1], recv_count[2], recv_count[3]);
+        for (k = 0; k < size; k++) {
+            int recv_id = recv_disp[k];
+            for (i = 0; i < recv_count[k]; i++){
+                char *key = NULL;
+                pair recv_pair = recvbuf[recv_id+i];
+                len = (size_t) recv_pair.count;
+                key = strdup(recv_pair.word);
+                if (strcmp(key, empty_flag)==0){
+                    if (doneRecv[k]==0){
                         remain--;
-                        free(key);
-                        break;
+                        doneRecv[k] = 1;
                     }
-                    //assign to thread
-                    hscode = hashcode(key) % (HASH_CAPACITY/size);
-                    tgt_qid = hscode / interval;
-                    insertQHashKey(localRQ[tgt_qid], key, len); 
-                    transCount[src_p]++;
                     free(key);
+                    break;
                 }
-            }
-            if (!doneSend[tgt_p] && !doneRecv[src_p]){
-                MPI_Wait(&request, &status);  
+                hscode = hashcode(key) % (HASH_CAPACITY/size);
+                tgt_tid = hscode / interval;
+                insertQHashKey(localRQ[tgt_tid], key, len); 
+                free(key);
             }
         }
     }
-    printf("pid = %d, recv count = %d, %d, %d, %d\n", pid, transCount[0], transCount[1], transCount[2], transCount[3]);
     MPI_Barrier(MPI_COMM_WORLD);
     temp_timer += MPI_Wtime();
     if (pid==0) printf("communication takes time %f \n", temp_timer);
-    
+
     temp_timer -= MPI_Wtime();
-    #pragma omp parallel shared(reducerQueues, pid) num_threads(nthreads)
+    #pragma omp parallel shared(reducerQueues, localRQ, pid) num_threads(nThreads)
     {
         int tid = omp_get_thread_num();
         int i;
@@ -371,6 +378,7 @@ int main(int argc, char **argv)
     free(localRQ);
     free(reduceTables);
     free(reducerQueues);
+    
     MPI_Barrier(MPI_COMM_WORLD);
     temp_timer += MPI_Wtime();
     total_time += MPI_Wtime();
