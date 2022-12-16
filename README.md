@@ -10,6 +10,7 @@ gcc serial.c -o serial -fopenmp
 #### The OpenMP version: see the run.sh
 // compile:
 gcc omp.c -o omp -fopenmp
+
 | Our OpenMP version has 3 variants as described in the report: the parallel.c is the version A, the omp.c is the version C, the omp_RQ.c is the version B. The input arguments for version B and C are the same.
 | the arguments are 1. number of all threads 2. number of reader threads 3. path to all files 4. repeat numbers of the files, for example:
 ./omp 16 4 ../files 4
