@@ -1,4 +1,3 @@
-This project is implemented by Xingguang Zhang and Haofei Tian
 
 #### The serial version: see the run_serial.sh
 
