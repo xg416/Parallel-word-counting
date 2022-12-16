@@ -1,6 +1,6 @@
 This project is implemented by Xingguang Zhang and Haofei Tian
 
-####The serial version: see the run_serial.sh
+#### The serial version: see the run_serial.sh
 | compile:
 gcc serial.c -o serial -fopenmp
 | the arguments are 1. path to all files 2. repeat numbers of the files, for example:
